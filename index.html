@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>FIT MATES</title>
+<meta name="theme-color" content="#0a0a0b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fit Mates">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0a0b; --surface:#141416; --surface-2:#1c1c1f; --border:#2a2a2e;
+  --text:#fff; --muted:#6b6b73; --accent:#c8ff00; --accent-2:#ff5c1f;
+  --success:#00d96f; --danger:#ff3366; --warning:#ffb800;
+  --protein:#ff5c1f; --carbs:#c8ff00; --fat:#ffb800;
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+}
+*{-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#000}
+body{font-family:'Space Grotesk',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;color:var(--text);
+  display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at top,rgba(200,255,0,0.05),transparent 50%),radial-gradient(ellipse at bottom,rgba(255,92,31,0.04),transparent 50%),#000}
+/* Anton hiányában sűrű, nehéz fallback — a display-tipó karaktere így offline is megmarad */
+.font-display{font-family:'Anton','Haettenschweiler','Arial Narrow',Impact,system-ui,sans-serif;font-weight:400;letter-spacing:.02em}
+.font-mono{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+/* ---------- helyi utility-osztályok (a Tailwind CDN kiváltása) ---------- */
+.flex{display:flex}.grid{display:grid}.relative{position:relative}
+.items-center{align-items:center}.items-start{align-items:flex-start}.items-end{align-items:flex-end}
+.justify-between{justify-content:space-between}.justify-center{justify-content:center}
+.text-center{text-align:center}.flex-1{flex:1}
+.gap-2{gap:8px}.gap-3{gap:12px}
+.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.mb-1{margin-bottom:4px}.mb-2{margin-bottom:8px}.mb-3{margin-bottom:12px}.mb-4{margin-bottom:16px}
+.mt-2{margin-top:8px}.pt-10{padding-top:40px}.px-5{padding-left:20px;padding-right:20px}
+.space-y-2>*+*{margin-top:8px}.space-y-3>*+*{margin-top:12px}
+
+/* ---------- ikonok (a Font Awesome CDN kiváltása) ---------- */
+.ic{width:1em;height:1em;display:inline-block;vertical-align:-.13em;flex:none;
+  fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ic-fill{fill:currentColor;stroke:none}
+#icon-sprite{position:absolute;width:0;height:0;overflow:hidden}
+
+/* ---------- telefonkeret (csak asztali előnézetben) ---------- */
+.phone-wrap{transform-origin:center}
+.phone-frame{width:390px;height:844px;background:var(--bg);border-radius:55px;border:12px solid #1a1a1a;
+  box-shadow:0 0 0 2px #2a2a2a,0 0 0 12px #0a0a0a,0 40px 100px rgba(0,0,0,.9),0 0 80px rgba(200,255,0,.05);
+  position:relative;overflow:hidden}
+.island{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:120px;height:36px;background:#000;border-radius:20px;z-index:100}
+.status-bar{position:absolute;top:0;left:0;right:0;height:56px;padding:19px 32px 0;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:600;z-index:90;pointer-events:none}
+
+.app{width:100%;height:100%;overflow-y:auto;overflow-x:hidden;position:relative;background:var(--bg);
+  -webkit-overflow-scrolling:touch;scrollbar-width:none}
+.app::-webkit-scrollbar{display:none}
+.screen{display:none;min-height:100%;padding-top:60px;padding-bottom:110px;position:relative}
+.screen.active{display:block;animation:fadeIn .3s}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.bg-mesh{background:radial-gradient(circle at 15% 5%,rgba(200,255,0,.06),transparent 35%),radial-gradient(circle at 85% 95%,rgba(255,92,31,.05),transparent 35%),var(--bg)}
+
+/* ---------- valódi telefon / telepített app: teljes képernyő ---------- */
+@media (max-width:760px),(display-mode:standalone),(display-mode:fullscreen){
+  body{display:block;background:var(--bg)}
+  .phone-wrap{transform:none!important;width:100%;height:100%}
+  .phone-frame{width:100%;height:100%;height:100dvh;border:none;border-radius:0;box-shadow:none}
+  .island,.status-bar{display:none}
+  .screen{padding-top:calc(var(--sat) + 14px);padding-bottom:calc(104px + var(--sab))}
+  .tab-bar{height:calc(84px + var(--sab));padding-bottom:var(--sab)}
+}
+
+.tab-bar{position:absolute;bottom:0;left:0;right:0;height:84px;background:rgba(10,10,11,.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-top:1px solid var(--border);display:flex;justify-content:space-around;align-items:flex-start;padding-top:12px;z-index:50}
+.tab-item{display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.05em;cursor:pointer;transition:color .2s;flex:1;background:none;border:none;font-family:inherit;padding:0}
+.tab-item.active{color:var(--accent)}
+.tab-item .ic{font-size:19px;width:19px;height:19px}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:18px}
+.card-elevated{background:linear-gradient(180deg,var(--surface-2),var(--surface));border:1px solid var(--border);border-radius:22px;padding:18px}
+
+.btn-primary{background:var(--accent);color:#000;font-weight:700;border-radius:16px;padding:18px 24px;text-transform:uppercase;letter-spacing:.05em;font-size:15px;border:none;width:100%;font-family:inherit;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-primary:active{transform:scale(.97)}
+.btn-secondary{background:var(--surface-2);color:var(--text);font-weight:600;border-radius:14px;padding:14px 20px;font-size:14px;border:1px solid var(--border);width:100%;font-family:inherit;cursor:pointer}
+.btn-secondary:active{transform:scale(.98)}
+
+.chip{padding:8px 14px;border-radius:100px;background:var(--surface);border:1px solid var(--border);font-size:12px;font-weight:600;letter-spacing:.03em;cursor:pointer;transition:all .2s;color:var(--text);font-family:inherit}
+.chip.active{background:var(--accent);color:#000;border-color:var(--accent)}
+
+.xp-bar{height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden;position:relative}
+.xp-fill{height:100%;background:linear-gradient(90deg,var(--accent),#fff);border-radius:3px;transition:width .8s cubic-bezier(.4,0,.2,1);box-shadow:0 0 12px var(--accent)}
+
+.set-dot{width:10px;height:10px;border-radius:50%;background:var(--surface-2);border:1px solid var(--border);transition:all .2s}
+.set-dot.done{background:var(--accent);border-color:var(--accent)}
+.set-dot.current{background:var(--accent);border-color:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulse-dot 1.2s infinite}
+@keyframes pulse-dot{0%,100%{transform:scale(1)}50%{transform:scale(1.3)}}
+
+.timer-overlay{position:absolute;inset:0;background:rgba(10,10,11,.97);backdrop-filter:blur(20px);z-index:80;display:none;flex-direction:column;align-items:center;justify-content:center;padding:calc(var(--sat) + 50px) 30px calc(var(--sab) + 30px)}
+.timer-overlay.active{display:flex;animation:fadeIn .3s}
+
+.rotate-warning{display:none;position:fixed;inset:0;background:#000;z-index:9999;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;padding:40px}
+@media (orientation:landscape) and (max-height:520px){.rotate-warning{display:flex}.phone-wrap{display:none}}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+
+.toast{position:absolute;top:calc(var(--sat) + 70px);left:50%;transform:translateX(-50%) translateY(-20px);background:var(--surface-2);border:1px solid var(--accent);padding:12px 20px;border-radius:14px;color:var(--accent);font-size:13px;font-weight:600;opacity:0;transition:all .3s;z-index:200;pointer-events:none;box-shadow:0 8px 30px rgba(0,0,0,.5);max-width:300px;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.goal-card{background:var(--surface);border:1.5px solid var(--border);border-radius:18px;padding:16px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.goal-card.active{border-color:var(--accent);background:linear-gradient(135deg,rgba(200,255,0,.08),var(--surface))}
+.goal-card.active::before{content:'';position:absolute;top:0;right:0;width:60px;height:60px;background:radial-gradient(circle,rgba(200,255,0,.2),transparent 70%)}
+
+.achievement{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px 10px;text-align:center;position:relative}
+.achievement.locked{opacity:.35}
+.achievement.unlocked{border-color:rgba(200,255,0,.4)}
+.achievement.unlocked .achievement-icon{background:var(--accent);color:#000;box-shadow:0 0 20px rgba(200,255,0,.3)}
+.achievement-icon{width:42px;height:42px;border-radius:12px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:18px;margin:0 auto 6px}
+
+.exercise-name-display{font-family:'Anton','Haettenschweiler','Arial Narrow',Impact,system-ui,sans-serif;font-size:46px;line-height:.95;letter-spacing:-.01em}
+
+.stat-tile{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px;text-align:center}
+
+.input-num{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:12px;color:#fff;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;font-size:22px;text-align:center;width:100%;outline:none;-moz-appearance:textfield}
+.input-num::-webkit-outer-spin-button,.input-num::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.input-num:focus{border-color:var(--accent)}
+.input-text{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:12px;color:#fff;font-family:inherit;font-weight:600;font-size:16px;width:100%;outline:none}
+.input-text:focus{border-color:var(--accent)}
+
+.chart-bar{background:linear-gradient(180deg,var(--accent),rgba(200,255,0,.2));border-radius:4px 4px 0 0;width:100%;transition:height .8s cubic-bezier(.4,0,.2,1);min-height:2px}
+
+.day-pill{width:38px;height:54px;border-radius:12px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:9px;font-weight:700;color:var(--muted);cursor:pointer;transition:all .2s}
+.day-pill.today{background:var(--accent);color:#000;border-color:var(--accent)}
+.day-pill.done{background:var(--surface-2);border-color:rgba(200,255,0,.5);color:var(--accent)}
+.day-pill.rest{background:transparent;border-style:dashed;color:var(--muted)}
+
+.muscle-row{display:flex;align-items:center;gap:12px;padding:8px 0}
+.muscle-row .label{flex:1;font-size:13px;font-weight:600}
+.muscle-row .status{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.muscle-bar{height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden;width:80px}
+.muscle-bar-fill{height:100%;border-radius:3px;transition:width .6s}
+
+.bg-noise::before{content:'';position:absolute;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .35 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");opacity:.5;pointer-events:none;mix-blend-mode:overlay;z-index:1}
+
+.icon-btn{width:38px;height:38px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:#fff;cursor:pointer;transition:all .2s;font-size:15px;flex:none}
+.icon-btn:active{transform:scale(.95)}
+
+.brand-mark{display:inline-flex;align-items:center;gap:8px}
+.brand-mark .pulse-ring{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulse-ring 1.4s infinite}
+@keyframes pulse-ring{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.4);opacity:.6}}
+
+.summary-stat{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;text-align:center}
+
+@keyframes confetti-fall{0%{transform:translateY(-20px) rotate(0);opacity:1}100%{transform:translateY(600px) rotate(720deg);opacity:0}}
+.confetti{position:absolute;width:8px;height:8px;pointer-events:none;animation:confetti-fall 2s ease-out forwards;z-index:150}
+
+.pr-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(255,184,0,.15);color:var(--warning);padding:3px 8px;border-radius:6px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+
+.anatomy-muscle{fill:#1c1c1f;stroke:#2a2a2e;stroke-width:1.2;transition:all .3s ease;cursor:pointer}
+.anatomy-muscle:hover{fill:#252529}
+.anatomy-muscle.active{fill:var(--accent);filter:drop-shadow(0 0 6px var(--accent))}
+.anatomy-muscle.filter{fill:var(--accent-2);filter:drop-shadow(0 0 6px var(--accent-2))}
+.anatomy-muscle.dim{fill:#111113;opacity:.4}
+.muscle-label{fill:var(--muted);font-size:8px;font-family:'JetBrains Mono',monospace;text-anchor:middle;pointer-events:none;opacity:0;transition:opacity .3s}
+.muscle-label.show{opacity:1;fill:#fff}
+
+.ex-list-item{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer;transition:all .2s;display:flex;justify-content:space-between;align-items:center}
+.ex-list-item.selected{border-color:var(--accent);background:linear-gradient(90deg,rgba(200,255,0,.08),var(--surface));box-shadow:0 0 20px rgba(200,255,0,.1)}
+.ex-list-item:active{transform:scale(.98)}
+
+.macro-bar-bg{height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden}
+.macro-bar-fill{height:100%;border-radius:4px;transition:width .6s}
+.meal-item{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)}
+.meal-item:last-child{border-bottom:none}
+.supplement-item{display:flex;align-items:center;gap:12px;padding:14px;background:var(--surface-2);border-radius:14px;margin-bottom:8px;border:1px solid var(--border);cursor:pointer;transition:all .2s}
+.supplement-item.taken{border-color:rgba(0,217,111,.5);background:rgba(0,217,111,.05)}
+.supplement-check{width:24px;height:24px;border-radius:8px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;transition:all .2s;flex:none}
+.supplement-item.taken .supplement-check{background:var(--success);border-color:var(--success);color:#000}
+.add-form{background:var(--surface-2);border:1px solid var(--border);border-radius:16px;padding:16px;margin-top:12px;display:none}
+.add-form.active{display:block;animation:fadeIn .3s}
+
+.modal-overlay{position:absolute;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(10px);z-index:300;display:none;align-items:center;justify-content:center;padding:34px}
+.modal-overlay.active{display:flex;animation:fadeIn .3s}
+.modal-content{background:var(--surface);border:1px solid var(--accent);border-radius:20px;padding:24px;width:100%;max-height:76vh;overflow-y:auto}
+</style>
+</head>
+<body>
+
+<!-- ===================== IKONKÉSZLET (beépített, offline is működik) ===================== -->
+<svg id="icon-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-xmark" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-check-circle" viewBox="0 0 24 24"><path d="M22 11.1V12a10 10 0 1 1-5.9-9.1"/><path d="M22 4 12 14.01l-3-3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="M15 18 9 12l6-6"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></symbol>
+  <symbol id="i-forward" viewBox="0 0 24 24"><path d="M13 19V5l9 7-9 7ZM2 19V5l9 7-9 7Z"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 3v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 21v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></symbol>
+  <symbol id="i-dumbbell" viewBox="0 0 24 24"><path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/></symbol>
+  <symbol id="i-fire" viewBox="0 0 24 24"><path d="M12 22a7 7 0 0 0 7-6.9c0-3.4-2-5.2-3.4-7.2C14.4 6.2 13.5 4.4 13.5 2c0 0-4.6 2.4-4.6 7 0 1.5.6 2.6 1.1 3.4-.9-.2-2-1.2-2.4-2.6C6.5 11.4 5 13 5 15.1A7 7 0 0 0 12 22Z"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8Z"/></symbol>
+  <symbol id="i-bed" viewBox="0 0 24 24"><path d="M2 20V5M2 12h16a4 4 0 0 1 4 4v4M2 20h20M6 12V9h5a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-chart-line" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></symbol>
+  <symbol id="i-apple" viewBox="0 0 24 24"><path d="M12 8c-1.6-2.6-5.2-2.3-6.4.6-1.3 3 .4 8 3 9.4 1.6.9 2.4-.5 3.4-.5s1.8 1.4 3.4.5c2.6-1.4 4.3-6.4 3-9.4-1.2-2.9-4.8-3.2-6.4-.6Z"/><path d="M12 8c0-2 1-3.4 3-4"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z"/><path d="M7 6H4a3 3 0 0 0 3 3M17 6h3a3 3 0 0 1-3 3"/></symbol>
+  <symbol id="i-medal" viewBox="0 0 24 24"><path d="m8 2 3.2 6M16 2l-3.2 6"/><circle cx="12" cy="15" r="6"/></symbol>
+  <symbol id="i-crown" viewBox="0 0 24 24"><path d="M2 7.5 6.5 12 12 4l5.5 8L22 7.5V19H2V7.5Z"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 2 3 6.6 7 .9-5.1 4.9 1.3 7L12 18l-6.2 3.4 1.3-7L2 9.5l7-.9L12 2Z"/></symbol>
+  <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M12 2c3 2.6 5 6.2 5 10.2L15 19H9l-2-6.8C7 8.2 9 4.6 12 2Z"/><path d="m9 14-3 3 1 4 3-2.6M15 14l3 3-1 4-3-2.6"/><circle cx="12" cy="10" r="1.6"/></symbol>
+  <symbol id="i-mountain" viewBox="0 0 24 24"><path d="M2 20h20L14 6l-4 6.5L8 10l-6 10Z"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-running" viewBox="0 0 24 24"><circle cx="16.5" cy="4" r="2"/><path d="m14 21-1.5-5.5-3.5 2L8 22"/><path d="m12.5 15.5-3.5-4 1.8-4.6 4 2 3.2 1.3M9 11 6 12"/></symbol>
+  <symbol id="i-weight" viewBox="0 0 24 24"><path d="M6.5 8h11l2 13h-15l2-13Z"/><path d="M8.8 8a3.2 3.2 0 1 1 6.4 0"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  <symbol id="i-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+  <symbol id="i-mobile" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M11 18h2"/></symbol>
+  <symbol id="i-signal" viewBox="0 0 24 24"><path class="ic-fill" d="M2 20h2.5v-4H2v4Zm5 0h2.5v-8H7v8Zm5 0h2.5V8H12v12Zm5 0h2.5V4H17v16Z"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12.6a11 11 0 0 1 14 0M8.5 16a6 6 0 0 1 7 0M2 9a16 16 0 0 1 20 0M12 19.5h.01"/></symbol>
+  <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2" y="7" width="18" height="10" rx="2.5"/><path d="M22.5 11v2"/><rect class="ic-fill" x="4" y="9" width="14" height="6" rx="1"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></symbol>
+</svg>
+
+<div class="rotate-warning">
+  <div style="font-size:64px;margin-bottom:24px;color:var(--accent)"><svg class="ic"><use href="#i-mobile"/></svg></div>
+  <h2 class="font-display" style="font-size:38px;margin-bottom:12px">FORGASD ÁLLÓRA</h2>
+  <p style="color:var(--muted);max-width:280px;line-height:1.5">A FIT MATES álló módra készült. Fordítsd vissza a készüléket az edzés folytatásához.</p>
+  <div style="margin-top:32px;padding:18px 26px;border:1px solid var(--border);border-radius:100px;font-size:22px;color:var(--accent)"><svg class="ic" style="animation:spin 2s linear infinite"><use href="#i-rotate"/></svg></div>
+</div>
+
+<div class="phone-wrap">
+<div class="phone-frame">
+  <div class="island"></div>
+  <div class="status-bar">
+    <span id="clock">9:41</span>
+    <div style="display:flex;gap:6px;align-items:center;font-size:13px">
+      <svg class="ic" style="font-size:11px"><use href="#i-signal"/></svg>
+      <svg class="ic" style="font-size:11px"><use href="#i-wifi"/></svg>
+      <svg class="ic" style="font-size:15px"><use href="#i-battery"/></svg>
+    </div>
+  </div>
+
+  <div class="app bg-mesh bg-noise" id="app">
+
+    <!-- ===================== TERV ===================== -->
+    <section class="screen active" id="screen-plan">
+      <div class="px-5 mb-4 flex items-center justify-between">
+        <div class="brand-mark">
+          <span class="pulse-ring"></span>
+          <span class="font-display" style="font-size:26px">FIT MATES</span>
+        </div>
+        <div class="flex gap-2">
+          <div class="card-elevated" style="padding:8px 12px;display:flex;align-items:center;gap:6px">
+            <svg class="ic" style="color:var(--accent-2);font-size:14px"><use href="#i-fire"/></svg>
+            <span style="font-weight:700;font-size:14px" id="streak-count">0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div class="card-elevated" style="background:linear-gradient(135deg,rgba(200,255,0,.06),var(--surface))">
+          <div class="flex items-end justify-between mb-3">
+            <div>
+              <div style="font-size:10px;color:var(--muted);letter-spacing:.18em">SZINT</div>
+              <div class="font-display" style="font-size:44px;line-height:1" id="user-level">1</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:10px;color:var(--muted);letter-spacing:.18em" id="user-title">ÚJONC</div>
+              <div class="font-mono" style="font-size:14px" id="user-xp">0 / 500</div>
+            </div>
+          </div>
+          <div class="xp-bar"><div class="xp-fill" id="xp-fill" style="width:0%"></div></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px" id="xp-to-next">500 XP a 2. szintig</div>
+        </div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase">Mai edzés</div>
+          <div style="font-size:11px;color:var(--muted)" id="today-date"></div>
+        </div>
+        <div id="today-workout-card"></div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px">Edzési cél</div>
+        <div class="grid grid-cols-2 gap-3" id="goal-grid"></div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px">Ezen a héten</div>
+        <div class="card" style="display:flex;gap:6px;justify-content:space-between" id="weekly-schedule"></div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div class="flex justify-between items-center mb-3">
+          <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase">Regeneráció</div>
+          <div style="font-size:11px;color:var(--accent);font-weight:700" id="recovery-summary">— / — kész</div>
+        </div>
+        <div class="card" id="recovery-card"></div>
+      </div>
+    </section>
+
+    <!-- ===================== ANATÓMIA / ÁTTEKINTÉS ===================== -->
+    <section class="screen" id="screen-anatomy">
+      <div class="px-5 flex items-center justify-between mb-2">
+        <button class="icon-btn" onclick="cancelSession()"><svg class="ic"><use href="#i-xmark"/></svg></button>
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase">Edzés áttekintés</div>
+          <div class="font-display" style="font-size:20px" id="anatomy-day-name">NYOMÓ NAP</div>
+        </div>
+        <div style="width:38px"></div>
+      </div>
+
+      <div class="px-5 mb-2 flex justify-center gap-2">
+        <button class="chip active" id="view-front-btn" onclick="setAnatomyView('front')">ELÖLNÉZET</button>
+        <button class="chip" id="view-back-btn" onclick="setAnatomyView('back')">HÁTULNÉZET</button>
+      </div>
+
+      <div class="px-5 mb-2 relative" style="height:340px">
+        <div style="position:absolute;inset:0;background:radial-gradient(circle at center,rgba(200,255,0,.05),transparent 60%);pointer-events:none"></div>
+        <svg viewBox="0 0 200 420" style="width:100%;height:100%;position:relative;z-index:1" id="anatomy-svg">
+          <g id="anatomy-front">
+            <ellipse cx="100" cy="30" rx="15" ry="20" fill="#1c1c1f" stroke="#2a2a2e" stroke-width="1.2"/>
+            <path d="M92,48 L108,48 L112,65 L88,65 Z" class="anatomy-muscle" data-muscle="core"/>
+            <path d="M70,65 Q100,55 130,65 L125,78 Q100,70 75,78 Z" class="anatomy-muscle" data-muscle="shoulders"/>
+            <path d="M70,65 L45,85 Q40,110 55,105 L70,78 Z" class="anatomy-muscle" data-muscle="shoulders"/>
+            <path d="M130,65 L155,85 Q160,110 145,105 L130,78 Z" class="anatomy-muscle" data-muscle="shoulders"/>
+            <path d="M75,78 Q100,72 100,100 L100,110 Q87,110 70,100 Z" class="anatomy-muscle" data-muscle="chest"/>
+            <path d="M125,78 Q100,72 100,100 L100,110 Q113,110 130,100 Z" class="anatomy-muscle" data-muscle="chest"/>
+            <path d="M47,108 Q35,135 42,155 L58,150 Q55,125 60,110 Z" class="anatomy-muscle" data-muscle="arms"/>
+            <path d="M153,108 Q165,135 158,155 L142,150 Q145,125 140,110 Z" class="anatomy-muscle" data-muscle="arms"/>
+            <path d="M42,155 L58,150 L52,200 L38,195 Z" class="anatomy-muscle" data-muscle="arms"/>
+            <path d="M158,155 L142,150 L148,200 L162,195 Z" class="anatomy-muscle" data-muscle="arms"/>
+            <path d="M85,110 L115,110 L115,220 L85,220 Z" class="anatomy-muscle" data-muscle="core"/>
+            <line x1="85" y1="130" x2="115" y2="130" stroke="#0a0a0b" stroke-width="2"/>
+            <line x1="85" y1="150" x2="115" y2="150" stroke="#0a0a0b" stroke-width="2"/>
+            <line x1="85" y1="170" x2="115" y2="170" stroke="#0a0a0b" stroke-width="2"/>
+            <line x1="85" y1="190" x2="115" y2="190" stroke="#0a0a0b" stroke-width="2"/>
+            <path d="M70,100 L85,110 L85,220 L75,200 Z" class="anatomy-muscle" data-muscle="core"/>
+            <path d="M130,100 L115,110 L115,220 L125,200 Z" class="anatomy-muscle" data-muscle="core"/>
+            <path d="M85,220 L105,220 Q108,270 100,320 L85,310 Q80,270 85,220 Z" class="anatomy-muscle" data-muscle="legs"/>
+            <path d="M115,220 L95,220 Q92,270 100,320 L115,310 Q120,270 115,220 Z" class="anatomy-muscle" data-muscle="legs"/>
+            <path d="M85,320 L100,320 L95,390 L85,380 Z" class="anatomy-muscle" data-muscle="legs"/>
+            <path d="M115,320 L100,320 L105,390 L115,380 Z" class="anatomy-muscle" data-muscle="legs"/>
+            <text x="100" y="95" class="muscle-label" id="label-chest">MELL</text>
+            <text x="40" y="135" class="muscle-label" id="label-arms">KAR</text>
+            <text x="100" y="170" class="muscle-label" id="label-core">TÖRZS</text>
+            <text x="100" y="275" class="muscle-label" id="label-legs">LÁB</text>
+            <text x="45" y="80" class="muscle-label" id="label-shoulders">VÁLL</text>
+          </g>
+          <g id="anatomy-back" style="display:none">
+            <ellipse cx="100" cy="30" rx="15" ry="20" fill="#1c1c1f" stroke="#2a2a2e" stroke-width="1.2"/>
+            <path d="M70,65 Q100,50 130,65 L125,105 Q100,85 75,105 Z" class="anatomy-muscle" data-muscle="back"/>
+            <path d="M70,65 L45,85 Q50,110 65,105 L75,78 Z" class="anatomy-muscle" data-muscle="shoulders"/>
+            <path d="M130,65 L155,85 Q150,110 135,105 L125,78 Z" class="anatomy-muscle" data-muscle="shoulders"/>
+            <path d="M65,105 L45,110 Q35,135 45,150 L55,125 Z" class="anatomy-muscle" data-muscle="arms"/>
+            <path d="M135,105 L155,110 Q165,135 155,150 L145,125 Z" class="anatomy-muscle" data-muscle="arms"/>
+            <path d="M45,150 L55,150 L50,195 L35,190 Z" class="anatomy-muscle" data-muscle="arms"/>
+            <path d="M155,150 L145,150 L150,195 L165,190 Z" class="anatomy-muscle" data-muscle="arms"/>
+            <path d="M75,105 Q100,95 125,105 L130,175 Q100,190 70,175 Z" class="anatomy-muscle" data-muscle="back"/>
+            <path d="M80,175 Q100,165 120,175 L115,210 L85,210 Z" class="anatomy-muscle" data-muscle="back"/>
+            <path d="M75,210 L100,205 L100,260 L80,265 Z" class="anatomy-muscle" data-muscle="legs"/>
+            <path d="M125,210 L100,205 L100,260 L120,265 Z" class="anatomy-muscle" data-muscle="legs"/>
+            <path d="M80,260 L100,255 L95,325 L85,320 Z" class="anatomy-muscle" data-muscle="legs"/>
+            <path d="M120,260 L100,255 L105,325 L115,320 Z" class="anatomy-muscle" data-muscle="legs"/>
+            <path d="M85,325 L95,325 L90,395 L80,385 Z" class="anatomy-muscle" data-muscle="legs"/>
+            <path d="M115,325 L105,325 L110,395 L120,385 Z" class="anatomy-muscle" data-muscle="legs"/>
+            <text x="100" y="150" class="muscle-label" id="label-back">HÁT</text>
+            <text x="40" y="135" class="muscle-label" id="label-arms-back">TRICEPSZ</text>
+            <text x="100" y="285" class="muscle-label" id="label-legs-back">LÁB</text>
+            <text x="45" y="80" class="muscle-label" id="label-shoulders-back">HÁTSÓ VÁLL</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="px-5 mb-2 text-center">
+        <div style="font-size:10px;color:var(--muted);letter-spacing:.1em" id="anatomy-hint">KOPPINTS EGY GYAKORLATRA VAGY IZOMRA</div>
+      </div>
+
+      <div class="px-5 mb-4 space-y-2" id="anatomy-exercise-list"></div>
+
+      <div class="px-5">
+        <button class="btn-primary" onclick="actuallyStartSession()">EDZÉS KEZDÉSE</button>
+      </div>
+    </section>
+
+    <!-- ===================== EDZÉS ===================== -->
+    <section class="screen" id="screen-train">
+      <div id="train-empty" class="px-5 pt-10">
+        <div style="text-align:center;margin-bottom:30px">
+          <div style="font-size:60px;color:var(--accent);margin-bottom:20px;filter:drop-shadow(0 0 20px rgba(200,255,0,.4))"><svg class="ic"><use href="#i-bolt"/></svg></div>
+          <h2 class="font-display" style="font-size:34px;line-height:1;margin-bottom:8px">NINCS AKTÍV<br>EDZÉS</h2>
+          <p style="color:var(--muted);font-size:14px;max-width:240px;margin:0 auto">Lépj a Terv fülre és indítsd el a mai edzést.</p>
+        </div>
+        <button class="btn-primary" onclick="switchScreen('plan')">UGRÁS A TERVHEZ</button>
+      </div>
+
+      <div id="train-active" style="display:none">
+        <div class="px-5 flex items-center justify-between mb-4">
+          <button class="icon-btn" onclick="cancelSession()"><svg class="ic"><use href="#i-xmark"/></svg></button>
+          <div style="text-align:center">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase" id="session-day-name">NYOMÓ NAP</div>
+            <div class="font-mono" style="font-size:14px;font-weight:600" id="session-time">00:00</div>
+          </div>
+          <button class="icon-btn" onclick="skipExercise()"><svg class="ic"><use href="#i-forward"/></svg></button>
+        </div>
+
+        <div class="px-5 mb-4">
+          <div style="height:3px;background:var(--surface-2);border-radius:2px;overflow:hidden"><div id="session-progress" style="height:100%;background:var(--accent);width:0%;transition:width .4s"></div></div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--muted);letter-spacing:.1em">
+            <span id="exercise-counter">GYAKORLAT 1 / 5</span>
+            <span id="volume-so-far">0 KG MEGEMELVE</span>
+          </div>
+        </div>
+
+        <div class="px-5 mb-4" style="text-align:center">
+          <div style="font-size:10px;color:var(--accent);letter-spacing:.2em;font-weight:700;margin-bottom:8px" id="muscle-target">MELL</div>
+          <svg viewBox="0 0 120 200" style="width:140px;height:200px;margin:0 auto;display:block" id="body-diagram">
+            <ellipse cx="60" cy="15" rx="11" ry="13" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5"/>
+            <rect x="55" y="26" width="10" height="8" fill="#2a2a2e"/>
+            <path data-muscle="shoulders" d="M30,38 Q22,38 20,46 L26,52 L40,44 Z M90,38 Q98,38 100,46 L94,52 L80,44 Z" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5" class="muscle-part"/>
+            <path data-muscle="chest" d="M38,38 Q60,36 82,38 L80,62 Q60,66 40,62 Z" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5" class="muscle-part"/>
+            <path data-muscle="arms" d="M18,46 L14,90 L24,92 L28,48 Z M102,46 L106,90 L96,92 L92,48 Z" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5" class="muscle-part"/>
+            <path data-muscle="back" d="M38,55 L42,82 L78,82 L82,55 Z" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5" class="muscle-part"/>
+            <path data-muscle="core" d="M44,64 L76,64 L74,102 L46,102 Z" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5" class="muscle-part"/>
+            <path data-muscle="legs" d="M44,102 L58,102 L56,182 L48,182 Z M62,102 L76,102 L72,182 L64,182 Z" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5" class="muscle-part"/>
+          </svg>
+        </div>
+
+        <div class="px-5 mb-4">
+          <div class="exercise-name-display" id="exercise-name" style="text-align:center">FEKVENYOMÁS</div>
+        </div>
+
+        <div class="px-5 mb-4">
+          <div class="grid grid-cols-3 gap-2 mb-4">
+            <div class="stat-tile">
+              <div style="font-size:9px;color:var(--muted);letter-spacing:.15em;margin-bottom:4px">SZETT</div>
+              <div class="font-mono" style="font-size:22px;font-weight:700" id="set-display">1/4</div>
+            </div>
+            <div class="stat-tile">
+              <div style="font-size:9px;color:var(--muted);letter-spacing:.15em;margin-bottom:4px">ISMÉTLÉS</div>
+              <div class="font-mono" style="font-size:22px;font-weight:700;color:var(--accent)" id="reps-display">8</div>
+            </div>
+            <div class="stat-tile">
+              <div style="font-size:9px;color:var(--muted);letter-spacing:.15em;margin-bottom:4px">KG</div>
+              <div class="font-mono" style="font-size:22px;font-weight:700" id="weight-display">60</div>
+            </div>
+          </div>
+
+          <div class="flex justify-center gap-2 mb-4" id="set-indicators"></div>
+
+          <div class="card mb-3" style="padding:14px">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.15em;margin-bottom:8px">SÚLY MÓDOSÍTÁSA</div>
+            <div class="flex items-center gap-3">
+              <button class="icon-btn" onclick="adjustWeight(-2.5)"><svg class="ic"><use href="#i-minus"/></svg></button>
+              <input type="number" inputmode="decimal" class="input-num" id="weight-input" value="60" step="2.5">
+              <button class="icon-btn" onclick="adjustWeight(2.5)"><svg class="ic"><use href="#i-plus"/></svg></button>
+            </div>
+            <div class="flex gap-2 mt-2">
+              <button class="chip" onclick="setWeight(0)" style="flex:1;text-align:center">SAJÁT</button>
+              <button class="chip" onclick="setWeight(20)" style="flex:1;text-align:center">20</button>
+              <button class="chip" onclick="setWeight(40)" style="flex:1;text-align:center">40</button>
+              <button class="chip" onclick="setWeight(60)" style="flex:1;text-align:center">60</button>
+              <button class="chip" onclick="setWeight(80)" style="flex:1;text-align:center">80</button>
+            </div>
+          </div>
+
+          <div class="card mb-3" style="padding:14px">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.15em;margin-bottom:8px">ISMÉTLÉS MÓDOSÍTÁSA</div>
+            <div class="flex items-center gap-3">
+              <button class="icon-btn" onclick="adjustReps(-1)"><svg class="ic"><use href="#i-minus"/></svg></button>
+              <input type="number" inputmode="numeric" class="input-num" id="reps-input" value="8" step="1">
+              <button class="icon-btn" onclick="adjustReps(1)"><svg class="ic"><use href="#i-plus"/></svg></button>
+            </div>
+          </div>
+
+          <button class="btn-primary" onclick="completeSet()" style="margin-bottom:10px"><svg class="ic"><use href="#i-check"/></svg>SZETT VÉGE</button>
+          <div class="flex gap-2">
+            <button class="btn-secondary" style="flex:1" onclick="skipSet()">SZETT KIHAGYÁSA</button>
+            <button class="btn-secondary" style="flex:1" onclick="startRestTimer(60)">PIHENÉS 60mp</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="train-summary" style="display:none;padding:30px 20px">
+        <div style="text-align:center;margin-bottom:24px">
+          <div style="font-size:60px;color:var(--accent);margin-bottom:12px;filter:drop-shadow(0 0 20px rgba(200,255,0,.5))"><svg class="ic"><use href="#i-trophy"/></svg></div>
+          <div style="font-size:11px;color:var(--accent);letter-spacing:.2em;font-weight:700">EDZÉS TELJESÍTVE</div>
+          <h2 class="font-display" style="font-size:38px;line-height:1;margin-top:8px" id="summary-title">KÉSZ.</h2>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="summary-stat">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.15em">IDŐTARTAM</div>
+            <div class="font-mono" style="font-size:22px;font-weight:700" id="summary-duration">0:00</div>
+          </div>
+          <div class="summary-stat">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.15em">VOLUMEN</div>
+            <div class="font-mono" style="font-size:22px;font-weight:700;color:var(--accent)" id="summary-volume">0 kg</div>
+          </div>
+          <div class="summary-stat">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.15em">SZETTEK</div>
+            <div class="font-mono" style="font-size:22px;font-weight:700" id="summary-sets">0</div>
+          </div>
+          <div class="summary-stat">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.15em">SZERZETT XP</div>
+            <div class="font-mono" style="font-size:22px;font-weight:700;color:var(--accent)" id="summary-xp">+0</div>
+          </div>
+        </div>
+
+        <div class="card mb-4" id="summary-prs" style="display:none">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:.15em;margin-bottom:8px">SZEMÉLYES REKORDOK</div>
+          <div id="summary-prs-list"></div>
+        </div>
+
+        <div class="card mb-4" id="summary-achievements" style="display:none">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:.15em;margin-bottom:8px">FELOLDOTT TELJESÍTMÉNYEK</div>
+          <div id="summary-achievements-list"></div>
+        </div>
+
+        <button class="btn-primary" onclick="finishSummary()">BEFEJEZÉS</button>
+      </div>
+
+      <div class="timer-overlay" id="timer-overlay">
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:-1">
+          <svg width="300" height="300" style="transform:rotate(-90deg)">
+            <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
+            <circle id="timer-circle" cx="150" cy="150" r="130" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="816.8" stroke-dashoffset="0" style="filter:drop-shadow(0 0 16px var(--accent));transition:stroke-dashoffset 1s linear"/>
+          </svg>
+        </div>
+        <div style="font-size:11px;letter-spacing:.25em;color:var(--accent);font-weight:700;margin-bottom:8px">PIHENÉS</div>
+        <div class="font-display" style="font-size:112px;line-height:1;color:#fff;letter-spacing:-.02em" id="timer-display">1:15</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:6px;text-align:center">KÖVETKEZŐ</div>
+        <div class="font-display" style="font-size:22px;text-align:center;margin-bottom:30px;max-width:260px" id="next-exercise">—</div>
+        <div style="display:flex;gap:10px;width:100%;max-width:280px;margin-top:auto">
+          <button class="btn-secondary" style="flex:1" onclick="skipRest()">UGRÁS</button>
+          <button class="btn-secondary" style="flex:1" onclick="addRestTime()">+15mp</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== ÉTREND ===================== -->
+    <section class="screen" id="screen-diet">
+      <div class="px-5 mb-4 flex items-center justify-between">
+        <h2 class="font-display" style="font-size:32px">TÁPLÁLKOZÁS</h2>
+        <div class="brand-mark"><span class="pulse-ring"></span></div>
+      </div>
+
+      <div class="px-5 mb-4 flex justify-between items-center">
+        <button class="icon-btn" onclick="changeDietDate(-1)"><svg class="ic"><use href="#i-chevron-left"/></svg></button>
+        <div style="text-align:center">
+          <div style="font-size:11px;color:var(--accent);letter-spacing:.15em;font-weight:700" id="diet-day-label">MA</div>
+          <div class="font-mono" style="font-size:14px" id="diet-date-label">—</div>
+        </div>
+        <button class="icon-btn" onclick="changeDietDate(1)"><svg class="ic"><use href="#i-chevron-right"/></svg></button>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div class="card-elevated" style="display:flex;align-items:center;gap:20px;padding:24px">
+          <div style="position:relative;width:120px;height:120px;flex-shrink:0">
+            <svg width="120" height="120" style="transform:rotate(-90deg)">
+              <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
+              <circle id="cal-ring" cx="60" cy="60" r="50" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="314.16" stroke-dashoffset="314.16" style="filter:drop-shadow(0 0 8px var(--accent));transition:stroke-dashoffset 1s cubic-bezier(.4,0,.2,1)"/>
+            </svg>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+              <div class="font-mono" style="font-size:24px;font-weight:700;line-height:1" id="cal-consumed">0</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px">/ <span id="cal-goal-display">2500</span></div>
+            </div>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:6px">Kalóriák</div>
+            <div class="font-display" style="font-size:32px" id="cal-remaining">2500</div>
+            <div style="font-size:12px;color:var(--accent)" id="cal-status">KCAL HÁTRAVAN</div>
+          </div>
+          <button class="icon-btn" onclick="toggleEditGoals()" style="width:32px;height:32px;font-size:12px"><svg class="ic"><use href="#i-pen"/></svg></button>
+        </div>
+
+        <div class="add-form" id="edit-goals-form">
+          <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:12px">Célok módosítása</div>
+          <div class="grid grid-cols-4 gap-2 mb-3">
+            <div>
+              <input type="number" inputmode="numeric" id="goal-cals" placeholder="Kcal" class="input-num" style="font-size:14px;padding:8px">
+              <div style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px">KCAL</div>
+            </div>
+            <div>
+              <input type="number" inputmode="numeric" id="goal-p" placeholder="F" class="input-num" style="font-size:14px;padding:8px">
+              <div style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px">FEHÉRJE</div>
+            </div>
+            <div>
+              <input type="number" inputmode="numeric" id="goal-c" placeholder="Sz" class="input-num" style="font-size:14px;padding:8px">
+              <div style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px">SZÉNH.</div>
+            </div>
+            <div>
+              <input type="number" inputmode="numeric" id="goal-f" placeholder="Z" class="input-num" style="font-size:14px;padding:8px">
+              <div style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px">ZSÍR</div>
+            </div>
+          </div>
+          <button class="btn-primary" onclick="saveGoals()" style="padding:10px;font-size:13px">MENTÉS</button>
+        </div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div class="card">
+          <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:12px">Makrók</div>
+          <div class="space-y-3">
+            <div>
+              <div class="flex justify-between mb-1">
+                <span style="font-size:12px;font-weight:600">Fehérje</span>
+                <span class="font-mono" style="font-size:12px"><span id="p-consumed">0</span> / <span id="p-goal">150</span>g</span>
+              </div>
+              <div class="macro-bar-bg"><div class="macro-bar-fill" id="p-bar" style="width:0%;background:var(--protein)"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between mb-1">
+                <span style="font-size:12px;font-weight:600">Szénhidrát</span>
+                <span class="font-mono" style="font-size:12px"><span id="c-consumed">0</span> / <span id="c-goal">250</span>g</span>
+              </div>
+              <div class="macro-bar-bg"><div class="macro-bar-fill" id="c-bar" style="width:0%;background:var(--carbs)"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between mb-1">
+                <span style="font-size:12px;font-weight:600">Zsír</span>
+                <span class="font-mono" style="font-size:12px"><span id="f-consumed">0</span> / <span id="f-goal">70</span>g</span>
+              </div>
+              <div class="macro-bar-bg"><div class="macro-bar-fill" id="f-bar" style="width:0%;background:var(--fat)"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div class="card-elevated">
+          <div class="flex justify-between items-center mb-3">
+            <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase">Böjt időzítő (16:8)</div>
+            <div style="font-size:10px;font-weight:700;padding:4px 8px;border-radius:6px" id="fast-status">INAKTÍV</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:20px">
+            <div style="position:relative;width:100px;height:100px;flex-shrink:0">
+              <svg width="100" height="100" style="transform:rotate(-90deg)">
+                <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="6"/>
+                <circle id="fast-ring" cx="50" cy="50" r="40" fill="none" stroke="var(--accent-2)" stroke-width="6" stroke-linecap="round" stroke-dasharray="251.2" stroke-dashoffset="251.2" style="filter:drop-shadow(0 0 6px var(--accent-2));transition:stroke-dashoffset 1s linear"/>
+              </svg>
+              <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+                <div class="font-mono" style="font-size:16px;font-weight:700" id="fast-timer">16:00</div>
+              </div>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:13px;color:var(--muted);margin-bottom:8px" id="fast-info">Indíts böjtöt a 16 órás ablakhoz.</div>
+              <button class="btn-primary" id="fast-btn" onclick="toggleFast()" style="padding:12px;font-size:13px">BÖJT KEZDÉSE</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div class="card">
+          <div class="flex justify-between items-center mb-3">
+            <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase">Étkezések</div>
+            <button class="icon-btn" onclick="toggleAddMeal()" style="width:32px;height:32px;font-size:14px"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+
+          <div class="add-form" id="add-meal-form">
+            <input type="text" id="meal-name" placeholder="Étel neve (pl. Csirkemell)" class="input-text mb-2">
+            <div class="grid grid-cols-4 gap-2 mb-3">
+              <div>
+                <input type="number" inputmode="numeric" id="meal-cals" placeholder="Kcal" class="input-num" style="font-size:14px;padding:8px">
+                <div style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px">KCAL</div>
+              </div>
+              <div>
+                <input type="number" inputmode="numeric" id="meal-p" placeholder="F" class="input-num" style="font-size:14px;padding:8px">
+                <div style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px">FEHÉRJE</div>
+              </div>
+              <div>
+                <input type="number" inputmode="numeric" id="meal-c" placeholder="Sz" class="input-num" style="font-size:14px;padding:8px">
+                <div style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px">SZÉNH.</div>
+              </div>
+              <div>
+                <input type="number" inputmode="numeric" id="meal-f" placeholder="Z" class="input-num" style="font-size:14px;padding:8px">
+                <div style="font-size:9px;color:var(--muted);text-align:center;margin-top:2px">ZSÍR</div>
+              </div>
+            </div>
+            <button class="btn-primary" onclick="addMeal()" style="padding:10px;font-size:13px">ÉTKEZÉS HOZZÁADÁSA</button>
+          </div>
+
+          <div id="meals-list" class="mt-2"></div>
+        </div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div class="card">
+          <div class="flex justify-between items-center mb-3">
+            <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase">Kiegészítők</div>
+            <button class="icon-btn" onclick="toggleAddSupp()" style="width:32px;height:32px;font-size:14px"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+
+          <div class="add-form" id="add-supp-form">
+            <input type="text" id="supp-name" placeholder="Név (pl. C-vitamin)" class="input-text mb-2">
+            <div class="grid grid-cols-2 gap-2 mb-3">
+              <input type="text" id="supp-dose" placeholder="Adag (pl. 1000mg)" class="input-text" style="font-size:14px;padding:8px">
+              <input type="text" id="supp-time" placeholder="Időpont (pl. Reggel)" class="input-text" style="font-size:14px;padding:8px">
+            </div>
+            <button class="btn-primary" onclick="addSupplement()" style="padding:10px;font-size:13px">KIEGÉSZÍTŐ HOZZÁADÁSA</button>
+          </div>
+
+          <div id="supplements-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== STATISZTIKA ===================== -->
+    <section class="screen" id="screen-progress">
+      <div class="px-5 mb-4 flex items-center justify-between">
+        <h2 class="font-display" style="font-size:32px">STATISZTIKA</h2>
+        <div class="brand-mark"><span class="pulse-ring"></span></div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px">Volumen · utolsó 7 edzés</div>
+        <div class="card-elevated">
+          <div style="display:flex;gap:6px;align-items:flex-end;height:140px" id="volume-chart"></div>
+          <div style="display:flex;gap:6px;margin-top:8px" id="volume-chart-labels"></div>
+        </div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px">Személyes rekordok</div>
+        <div class="grid grid-cols-2 gap-3" id="pr-grid"></div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px">Izomcsoport volumen</div>
+        <div class="card" id="muscle-breakdown"></div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px">Regenerációs hőtérkép</div>
+        <div class="card" style="display:flex;gap:14px;align-items:center">
+          <svg viewBox="0 0 120 200" style="width:100px;height:170px;flex-shrink:0" id="recovery-body">
+            <ellipse cx="60" cy="15" rx="11" ry="13" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5"/>
+            <rect x="55" y="26" width="10" height="8" fill="#2a2a2e"/>
+            <path data-muscle="shoulders" d="M30,38 Q22,38 20,46 L26,52 L40,44 Z M90,38 Q98,38 100,46 L94,52 L80,44 Z" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5" class="muscle-part-recov"/>
+            <path data-muscle="chest" d="M38,38 Q60,36 82,38 L80,62 Q60,66 40,62 Z" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5" class="muscle-part-recov"/>
+            <path data-muscle="arms" d="M18,46 L14,90 L24,92 L28,48 Z M102,46 L106,90 L96,92 L92,48 Z" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5" class="muscle-part-recov"/>
+            <path data-muscle="back" d="M38,55 L42,82 L78,82 L82,55 Z" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5" class="muscle-part-recov"/>
+            <path data-muscle="core" d="M44,64 L76,64 L74,102 L46,102 Z" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5" class="muscle-part-recov"/>
+            <path data-muscle="legs" d="M44,102 L58,102 L56,182 L48,182 Z M62,102 L76,102 L72,182 L64,182 Z" fill="#2a2a2e" stroke="#3a3a3e" stroke-width=".5" class="muscle-part-recov"/>
+          </svg>
+          <div style="flex:1" id="recovery-legend"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== PROFIL ===================== -->
+    <section class="screen" id="screen-profile">
+      <div class="px-5 mb-4 flex items-center justify-between">
+        <h2 class="font-display" style="font-size:32px">SPORTOLÓ</h2>
+        <div class="brand-mark"><span class="pulse-ring"></span></div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div class="card-elevated" style="text-align:center;padding:30px 20px;background:linear-gradient(135deg,rgba(200,255,0,.08),var(--surface))">
+          <div style="width:90px;height:90px;border-radius:50%;background:var(--accent);margin:0 auto 14px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 40px rgba(200,255,0,.4)">
+            <span class="font-display" style="font-size:42px;color:#000" id="profile-level">1</span>
+          </div>
+          <div class="font-display" style="font-size:22px" id="profile-title">ÚJONC</div>
+          <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;margin-top:4px" id="profile-total-xp">0 ÖSSZES XP</div>
+        </div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="stat-tile">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.15em">EDZÉSEK</div>
+            <div class="font-display" style="font-size:28px" id="profile-workouts">0</div>
+          </div>
+          <div class="stat-tile">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.15em">SOROZAT</div>
+            <div class="font-display" style="font-size:28px;color:var(--accent-2)" id="profile-streak">0</div>
+          </div>
+          <div class="stat-tile">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.15em">VOLUMEN</div>
+            <div class="font-display" style="font-size:28px" id="profile-volume">0</div>
+          </div>
+          <div class="stat-tile">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.15em">IDŐ</div>
+            <div class="font-display" style="font-size:28px" id="profile-time">0ó</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div class="flex justify-between items-center mb-3">
+          <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase">Teljesítmények</div>
+          <div style="font-size:11px;color:var(--accent);font-weight:700" id="achievement-count">0 / 12</div>
+        </div>
+        <div class="grid grid-cols-3 gap-2" id="achievements-grid"></div>
+      </div>
+
+      <div class="px-5 mb-4">
+        <div style="font-size:11px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;margin-bottom:10px">Adatok</div>
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <button class="btn-secondary" onclick="exportData()">MENTÉS FÁJLBA</button>
+          <button class="btn-secondary" onclick="importData()">VISSZATÖLTÉS</button>
+        </div>
+        <button class="btn-secondary" onclick="resetData()" style="color:var(--danger);border-color:rgba(255,51,102,.3)">MINDEN ADAT TÖRLÉSE</button>
+        <div class="text-center" style="font-size:10px;color:var(--muted);letter-spacing:.15em;margin-top:16px">FIT MATES v<span id="app-version">1</span></div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-item active" data-screen="plan"><svg class="ic"><use href="#i-dumbbell"/></svg><span>TERV</span></button>
+    <button class="tab-item" data-screen="diet"><svg class="ic"><use href="#i-apple"/></svg><span>ÉTREND</span></button>
+    <button class="tab-item" data-screen="train"><svg class="ic"><use href="#i-bolt"/></svg><span>EDZÉS</span></button>
+    <button class="tab-item" data-screen="progress"><svg class="ic"><use href="#i-chart-line"/></svg><span>STAT</span></button>
+    <button class="tab-item" data-screen="profile"><svg class="ic"><use href="#i-user"/></svg><span>ÉN</span></button>
+  </div>
+
+  <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+    <div class="modal-content" id="modal-content"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
