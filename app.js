@@ -3,11 +3,12 @@
    A verziószám EGYEZIK a sw.js CACHE nevében lévő számmal (fitmates-vN).
    ========================================================================== */
 'use strict';
-const APP_VERSION = 1;
+const APP_VERSION = 2;
 
 /* ---------------------------------------------------------------- ÁLLAPOT */
 const DEFAULT_STATE = {
-  user:{level:1,xp:0,streak:0,lastWorkoutDate:null,totalXp:0},
+  user:{level:1,xp:0,streak:0,lastWorkoutDate:null,totalXp:0,name:''},
+  weeklyGoal:4,
   goal:'build',
   muscleRecovery:{chest:0,back:0,legs:0,shoulders:0,arms:0,core:0},
   lastWeights:{},
@@ -226,9 +227,9 @@ const achievements = [
 function realWorkouts(s){ return s.workouts.filter(w=>!w.isRest); }
 
 const titles = [
-  {level:1,name:'ÚJONC'},{level:3,name:'KEZDŐ'},{level:5,name:'SPORTOLÓ'},
-  {level:8,name:'VERSENYZŐ'},{level:12,name:'HARCOS'},{level:16,name:'SZÖRNYETEG'},
-  {level:20,name:'ELIT'},{level:25,name:'LEGENDA'},{level:30,name:'HALHATATLAN'}
+  {level:1,name:'Újonc'},{level:3,name:'Kezdő'},{level:5,name:'Sportoló'},
+  {level:8,name:'Versenyző'},{level:12,name:'Harcos'},{level:16,name:'Szörnyeteg'},
+  {level:20,name:'Elit'},{level:25,name:'Legenda'},{level:30,name:'Halhatatlan'}
 ];
 
 /* ---------------------------------------------------------------- SEGÉDEK */
@@ -259,7 +260,7 @@ function getRecoveryLevel(muscle){
   const last = state.muscleRecovery[muscle] || 0;
   if(!last) return {pct:100,label:'KÉSZ',color:'var(--success)'};
   const hours = (Date.now()-last)/3600000;
-  if(hours<24) return {pct:hours/24*100,label:'PIHEN',color:'var(--accent-2)'};
+  if(hours<24) return {pct:hours/24*100,label:'PIHEN',color:'var(--pink)'};
   if(hours<48) return {pct:50+(hours-24)/24*50,label:'MAJDNEM',color:'var(--warning)'};
   return {pct:100,label:'KÉSZ',color:'var(--success)'};
 }
@@ -304,7 +305,11 @@ function beep(){
     });
   }catch(e){}
 }
-function vibrate(pattern){ if(navigator.vibrate) navigator.vibrate(pattern); }
+// A böngésző az első érintésig blokkolja a rezgést, és MINDEN hívásra hibát ír a
+// konzolra — ezért csak valódi interakció után hívjuk meg.
+let userInteracted=false;
+['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,()=>{userInteracted=true;},{once:true}));
+function vibrate(pattern){ if(userInteracted && navigator.vibrate) navigator.vibrate(pattern); }
 // iOS: a WebAudio csak felhasználói interakció után indul — az első koppintásra feloldjuk
 document.addEventListener('touchstart', ()=>{
   if(!audioCtx){ try{ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
@@ -355,10 +360,10 @@ function tapMuscle(muscleCat){
   if(!state.activeSession) return;
   if(state.selectedMuscleFilter===muscleCat){
     state.selectedMuscleFilter=null;
-    document.getElementById('anatomy-hint').textContent='KOPPINTS EGY GYAKORLATRA VAGY IZOMRA';
+    document.getElementById('anatomy-hint').textContent='Koppints egy gyakorlatra vagy izomra';
   }else{
     state.selectedMuscleFilter=muscleCat;
-    document.getElementById('anatomy-hint').textContent=`SZŰRÉS: ${(muscleNamesHu[muscleCat]||muscleCat).toUpperCase()}`;
+    document.getElementById('anatomy-hint').textContent=`Szűrés: ${muscleNamesHu[muscleCat]||muscleCat}`;
   }
   state.highlightedExercise=null;
   updateAnatomyHighlights();
@@ -368,13 +373,13 @@ function selectExerciseInOverview(idx){
   if(!state.activeSession) return;
   if(state.highlightedExercise===idx){
     state.highlightedExercise=null;
-    document.getElementById('anatomy-hint').textContent='KOPPINTS EGY GYAKORLATRA VAGY IZOMRA';
+    document.getElementById('anatomy-hint').textContent='Koppints egy gyakorlatra vagy izomra';
   }else{
     state.highlightedExercise=idx;
     const ex=state.activeSession.exercises[idx];
     state.selectedMuscleFilter=null;
     const cat=muscleCategoryMap[ex.muscle]||'core';
-    document.getElementById('anatomy-hint').textContent=`CÉL: ${(muscleNamesHu[cat]||cat).toUpperCase()}`;
+    document.getElementById('anatomy-hint').textContent=`Cél: ${muscleNamesHu[cat]||cat}`;
     setAnatomyView(ex.muscle==='back' ? 'back' : 'front');
   }
   updateAnatomyHighlights();
@@ -407,7 +412,7 @@ function renderAnatomyExerciseList(){
   if(state.selectedMuscleFilter)
     show=state.activeSession.exercises.filter(ex=>(muscleCategoryMap[ex.muscle]||'core')===state.selectedMuscleFilter);
   if(show.length===0){
-    list.innerHTML=`<div class="card" style="text-align:center;color:var(--muted);font-size:13px">Erre az izomra ma nincs gyakorlat.</div>`;
+    list.innerHTML=`<div class="card" style="text-align:center;color:var(--dim);font-size:13px">Erre az izomra ma nincs gyakorlat.</div>`;
     return;
   }
   list.innerHTML=show.map(ex=>{
@@ -415,14 +420,14 @@ function renderAnatomyExerciseList(){
     const sel=state.highlightedExercise===i;
     return `<div class="ex-list-item ${sel?'selected':''}" onclick="selectExerciseInOverview(${i})">
       <div style="display:flex;align-items:center;gap:12px">
-        <div style="width:8px;height:30px;background:${sel?'var(--accent)':'var(--surface-2)'};border-radius:4px"></div>
+        <div style="width:8px;height:30px;background:${sel?'var(--accent)':'var(--faint)'};border-radius:4px"></div>
         <div>
           <div style="font-size:10px;color:var(--accent);letter-spacing:.15em;text-transform:uppercase;margin-bottom:2px">${esc(muscleNamesHu[ex.muscle]||ex.muscle)}</div>
           <div style="font-weight:700;font-size:15px">${esc(ex.name)}</div>
         </div>
       </div>
-      <div style="text-align:right" class="font-mono">
-        <div style="font-size:11px;color:var(--muted)">${ex.sets} × ${ex.reps}</div>
+      <div style="text-align:right" class="num">
+        <div style="font-size:11px;color:var(--dim)">${ex.sets} × ${ex.reps}</div>
         <div style="font-size:14px;font-weight:700">${ex.weight ? ex.weight+' kg' : 'saját'}</div>
       </div>
     </div>`;
@@ -441,16 +446,16 @@ function closeModal(e){ if(e.target.id==='modal-overlay') hideModal(); }
 let _confirmCb=null;
 function askConfirm(title,text,okLabel,cb){
   _confirmCb=cb;
-  openModal(`<h3 class="font-display" style="font-size:24px;margin:0 0 10px">${esc(title)}</h3>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 18px;line-height:1.5">${esc(text)}</p>
+  openModal(`<h3 class="hand" style="font-size:24px;margin:0 0 10px">${esc(title)}</h3>
+    <p style="font-size:13px;color:var(--dim);margin:0 0 18px;line-height:1.5">${esc(text)}</p>
     <button class="btn-primary" style="background:var(--danger);color:#fff;margin-bottom:8px" onclick="confirmYes()">${esc(okLabel)}</button>
     <button class="btn-secondary" onclick="hideModal()">MÉGSE</button>`);
 }
 function confirmYes(){ hideModal(); const cb=_confirmCb; _confirmCb=null; if(cb) cb(); }
 function showCalisthenicsInfo(){
   openModal(`
-    <h3 class="font-display" style="font-size:24px;margin:0 0 12px">CALISTHENICS</h3>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">A calisthenics nem csak izomtömeget épít, egyszerre fejleszti:</p>
+    <h3 class="hand" style="font-size:24px;margin:0 0 12px">CALISTHENICS</h3>
+    <p style="font-size:13px;color:var(--dim);margin-bottom:12px">A calisthenics nem csak izomtömeget épít, egyszerre fejleszti:</p>
     <ul style="font-size:13px;margin-bottom:12px;padding-left:20px;list-style:disc">
       <li>az erőt és a relatív erőt</li><li>az állóképességet</li>
       <li>az egyensúlyt és a koordinációt</li><li>a mobilitást és a testkontrollt</li>
@@ -567,97 +572,196 @@ function updateFastingTimer(){
   const target=state.diet.fasting.protocol*3600000;
   const remaining=Math.max(0,target-elapsed);
   el.textContent=`${String(Math.floor(remaining/3600000)).padStart(2,'0')}:${String(Math.floor((remaining%3600000)/60000)).padStart(2,'0')}`;
-  const ring=document.getElementById('fast-ring');
-  ring.style.strokeDashoffset=251.2*(1-Math.min(1,elapsed/target));
-  if(remaining===0){
-    document.getElementById('fast-info').textContent='Cél elérve! Megszakíthatod a böjtöt.';
-    ring.style.stroke='var(--success)';
-  }else ring.style.stroke='var(--accent-2)';
+  const bar=document.getElementById('fast-bar');
+  bar.style.width=Math.min(100,elapsed/target*100)+'%';
+  bar.parentElement.style.color = remaining===0 ? 'var(--success)' : 'var(--pink)';
+  if(remaining===0) document.getElementById('fast-info').textContent='Cél elérve! Megszakíthatod a böjtöt.';
 }
 
-/* ---------------------------------------------------------------- RENDER: TERV */
-function renderPlan(){
-  document.getElementById('today-date').textContent=formatDate();
-  document.getElementById('streak-count').textContent=state.user.streak;
-  document.getElementById('user-level').textContent=state.user.level;
-  document.getElementById('user-title').textContent=getTitle(state.user.level);
-  const need=xpForLevel(state.user.level);
-  document.getElementById('user-xp').textContent=`${state.user.xp} / ${need}`;
-  document.getElementById('xp-fill').style.width=(state.user.xp/need*100)+'%';
-  document.getElementById('xp-to-next').textContent=`${need-state.user.xp} XP a ${state.user.level+1}. szintig`;
+/* ---------------------------------------------------------------- RENDER: KEZDŐLAP */
+const DAYS_HU=['H','K','Sze','Cs','P','Szo','V'];
+function weekStart(d=new Date()){ const x=new Date(d); x.setHours(0,0,0,0); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; }
+// a hét (H..V) napi volumene a tényleges edzésekből
+function weekVolumes(){
+  const start=weekStart().getTime(), out=[0,0,0,0,0,0,0];
+  realWorkouts(state).forEach(w=>{
+    const i=Math.floor((midnight(new Date(w.date))-start)/86400000);
+    if(i>=0&&i<7) out[i]+=w.volume;
+  });
+  return out;
+}
+function todayWorkouts(){ const t=new Date().toDateString(); return realWorkouts(state).filter(w=>new Date(w.date).toDateString()===t); }
 
+/* satírozott oszlopdiagram — kézzel rajzolt tengellyel */
+// nagy számok rövidítése a tengelyen: 4900 -> 4,9k
+function shortNum(v){
+  if(v>=1000) return (v/1000).toFixed(v%1000===0?0:1).replace('.',',')+'k';
+  return String(Math.round(v));
+}
+function hatchChart(vals,labels,unit){
+  const W=300,H=140,padL=32,padR=6,padT=12,padB=24;
+  const max=Math.max(1,...vals);
+  // kerek felső határ, hogy a tengelyfeliratok is kerek számok legyenek
+  const step=Math.pow(10,Math.floor(Math.log10(max)))/2;
+  const nice=Math.max(step*2,Math.ceil(max/step)*step);
+  const slot=(W-padL-padR)/vals.length;
+  const bw=Math.min(24,slot*0.5);
+  let bars='',days='',ticks='';
+  vals.forEach((v,i)=>{
+    const h=v>0?Math.max(3,(v/nice)*(H-padT-padB)):0;
+    const cx=padL+i*slot+slot/2;
+    if(h>0) bars+=`<rect class="bar" x="${(cx-bw/2).toFixed(1)}" y="${(H-padB-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="3"/>`;
+    days+=`<text class="day" x="${cx.toFixed(1)}" y="${H-7}">${esc(labels[i])}</text>`;
+  });
+  for(let k=0;k<=2;k++){
+    const v=nice/2*k, y=H-padB-(v/nice)*(H-padT-padB);
+    ticks+=`<text class="tick" x="${padL-6}" y="${(y+3.5).toFixed(1)}" text-anchor="end">${shortNum(v)}</text>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(unit||'')}">
+    <path class="axis" d="M${padL-3} ${padT-2} L${padL-3} ${H-padB} L${W-3} ${H-padB}"/>
+    ${ticks}${bars}${days}</svg>`;
+}
+
+function renderPlan(){
+  const u=state.user;
+  document.getElementById('greeting').textContent = u.name ? `Szia, ${u.name}!` : 'Szia!';
+  document.getElementById('streak-count').textContent=u.streak;
+  document.getElementById('user-level').textContent=u.level;
+  document.getElementById('user-title').textContent=getTitle(u.level);
+  const need=xpForLevel(u.level);
+  document.getElementById('user-xp').textContent=`${u.xp} / ${need}`;
+  document.getElementById('xp-fill').style.width=(u.xp/need*100)+'%';
+  document.getElementById('xp-to-next').textContent=`${need-u.xp} XP a ${u.level+1}. szintig · ${formatDate()}`;
+
+  /* --- napi trió: kalória, szett, aktív perc (mind valós adatból) --- */
+  const dayKey=new Date().toDateString();
+  const meals=state.diet.meals[dayKey]||[];
+  const kcal=meals.reduce((s,m)=>s+m.cals,0);
+  const tw=todayWorkouts();
+  const sets=tw.reduce((s,w)=>s+w.sets,0);
+  const mins=Math.round(tw.reduce((s,w)=>s+w.duration,0)/60);
+  const trio=[
+    {ic:'fire',  c:'var(--lime)',  lbl:'Kalória',   val:kcal, goal:state.diet.calorieGoal, unit:'kcal'},
+    {ic:'dumbbell',c:'var(--purple)',lbl:'Szettek', val:sets, goal:20, unit:'szett'},
+    {ic:'clock', c:'var(--blue)',  lbl:'Aktív perc',val:mins, goal:60, unit:'perc'}
+  ];
+  document.getElementById('trio').innerHTML=trio.map((t,i)=>`
+    <div>
+      <div class="ring ${i===1?'s2':i===2?'s3':''}" style="color:${t.c};margin:0 auto">${ic(t.ic)}</div>
+      <div class="lbl">${t.lbl}</div>
+      <div class="val" style="color:${t.c}">${t.val.toLocaleString('hu')}</div>
+      <div class="goal">/ ${t.goal.toLocaleString('hu')} ${t.unit}</div>
+      <div class="hbar slim" style="color:${t.c}"><i style="width:${Math.min(100,t.val/t.goal*100)}%"></i></div>
+    </div>`).join('');
+
+  /* --- mai edzés --- */
   const card=document.getElementById('today-workout-card');
   const today=generateTodayWorkout();
+  const ill=`<svg class="today-ill" viewBox="0 0 200 168"><use href="#ill-lifter"/></svg>`;
   if(state.completedToday){
-    card.innerHTML=`<div class="card-elevated" style="text-align:center;padding:30px 20px">
-      <div style="font-size:48px;color:var(--success);margin-bottom:12px">${ic('check-circle')}</div>
-      <div class="font-display" style="font-size:24px;margin-bottom:6px">MAI CÉL TELJESÍTVE</div>
-      <p style="color:var(--muted);font-size:13px;margin:0">Szép munka. Pihenj jól, és gyere vissza holnap.</p>
+    card.innerHTML=`<div class="card text-center" style="padding:26px 20px">
+      <div style="font-size:46px;color:var(--lime);margin-bottom:8px">${ic('check-circle')}</div>
+      <div class="hand" style="font-size:28px;margin-bottom:4px">Mai cél teljesítve</div>
+      <p class="dim" style="font-size:14px;margin:0">Szép munka. Pihenj jól, és gyere vissza holnap.</p>
     </div>`;
   }else if(today && today.muscles.length>0){
     const totalSets=today.exercises.reduce((s,e)=>s+e.sets,0);
-    card.innerHTML=`<div class="card-elevated" style="padding:22px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
-        <div>
-          <div style="font-size:10px;color:var(--accent);letter-spacing:.2em;font-weight:700">${esc(today.day.toUpperCase())}</div>
-          <div class="font-display" style="font-size:30px;line-height:1">${esc(today.name.toUpperCase())}</div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:10px;color:var(--muted);letter-spacing:.1em">${today.exercises.length} GYAKORLAT</div>
-          <div style="font-size:10px;color:var(--muted);letter-spacing:.1em">${totalSets} SZETT</div>
+    const g=goals[state.goal];
+    const mins=Math.round(totalSets*(0.8+g.rest/60));
+    const intensity={build:'Közepes',calisthenics:'Közepes',cardio:'Könnyű',rest:'—'}[state.goal]||'Közepes';
+    card.innerHTML=`<div class="card">
+      <div class="today-wrap">
+        ${ill}
+        <div class="today-info">
+          <div class="today-name">${esc(today.name)}</div>
+          <div class="today-meta">${ic('clock')} ${mins} perc</div>
+          <div class="today-meta">${ic('dumbbell')} ${intensity} · ${today.exercises.length} gyakorlat</div>
+          <button class="btn-primary" style="margin-top:11px" onclick="startSession()">Kezdés</button>
         </div>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-        ${today.exercises.map(ex=>`<div style="font-size:11px;background:var(--surface);border:1px solid var(--border);padding:4px 8px;border-radius:6px;display:flex;align-items:center;gap:4px">${ex.isCustom?`<span style="color:var(--accent-2);font-size:9px">${ic('user-plus',9)}</span>`:''}${esc(ex.name)} <span style="color:var(--muted);font-size:10px">(${ex.sets}×${ex.reps})</span></div>`).join('')}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 12px">
+        ${today.exercises.map(ex=>`<span class="chip" style="padding:5px 11px;font-size:12px;font-weight:400;color:var(--dim)">${ex.isCustom?ic('user-plus',10)+' ':''}${esc(ex.name)} <span class="faint">${ex.sets}×${ex.reps}</span></span>`).join('')}
       </div>
-      <button class="btn-primary" onclick="startSession()" style="margin-bottom:10px">EDZÉS INDÍTÁSA</button>
-      <button class="btn-secondary" onclick="toggleAddCustomEx()">SAJÁT GYAKORLAT HOZZÁADÁSA</button>
+      <button class="btn-secondary" onclick="toggleAddCustomEx()">Saját gyakorlat hozzáadása</button>
       <div class="add-form" id="add-custom-ex-form">
         <input type="text" id="custom-ex-name" placeholder="Gyakorlat neve" class="input-text mb-2">
-        <select id="custom-ex-muscle" class="input-text mb-2" style="background:var(--surface-2);color:#fff">
+        <select id="custom-ex-muscle" class="input-text mb-2">
           <option value="chest">Mell</option><option value="back">Hát</option>
           <option value="legs">Lábak</option><option value="shoulders">Vállak</option>
           <option value="triceps">Tricepsz</option><option value="biceps">Bicepsz</option>
           <option value="core">Törzs</option>
         </select>
         <div class="grid grid-cols-3 gap-2 mb-3">
-          <input type="number" inputmode="numeric" id="custom-ex-sets" placeholder="Szett" class="input-num" style="font-size:14px;padding:8px">
-          <input type="number" inputmode="numeric" id="custom-ex-reps" placeholder="Ism." class="input-num" style="font-size:14px;padding:8px">
-          <input type="number" inputmode="decimal" id="custom-ex-weight" placeholder="Kg" class="input-num" style="font-size:14px;padding:8px">
+          <input type="number" inputmode="numeric" id="custom-ex-sets" placeholder="Szett" class="input-num" style="font-size:14px;padding:9px">
+          <input type="number" inputmode="numeric" id="custom-ex-reps" placeholder="Ism." class="input-num" style="font-size:14px;padding:9px">
+          <input type="number" inputmode="decimal" id="custom-ex-weight" placeholder="Kg" class="input-num" style="font-size:14px;padding:9px">
         </div>
-        <button class="btn-primary" onclick="addCustomExercise()" style="padding:10px;font-size:13px">HOZZÁADÁS A TERVHEZ</button>
+        <button class="btn-primary" onclick="addCustomExercise()" style="font-size:19px;padding:10px">Hozzáadás</button>
       </div>
       ${state.customTodayExercises.length>0?`
-        <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
-          <div style="font-size:10px;color:var(--muted);letter-spacing:.1em;margin-bottom:6px">SAJÁT GYAKORLATOK</div>
+        <div style="margin-top:12px">
+          <div class="lbl mb-2">Saját gyakorlatok</div>
           ${state.customTodayExercises.map(ex=>`
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">
-              <span style="font-size:13px">${esc(ex.name)} <span style="color:var(--muted);font-size:11px">(${esc(muscleNamesHu[ex.muscle]||ex.muscle)})</span></span>
+            <div class="meal-item">
+              <span style="font-size:14px">${esc(ex.name)} <span class="tiny">(${esc(muscleNamesHu[ex.muscle]||ex.muscle)})</span></span>
               <div style="display:flex;align-items:center;gap:8px">
-                <span class="font-mono" style="font-size:12px">${ex.sets}×${ex.reps} · ${ex.weight}kg</span>
-                <button onclick="deleteCustomExercise('${ex.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px">${ic('trash',12)}</button>
+                <span class="tiny num">${ex.sets}×${ex.reps} · ${ex.weight}kg</span>
+                <button onclick="deleteCustomExercise('${ex.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:13px">${ic('trash',13)}</button>
               </div>
             </div>`).join('')}
         </div>`:''}
     </div>`;
   }else{
-    card.innerHTML=`<div class="card-elevated" style="text-align:center;padding:30px 20px">
-      <div style="font-size:48px;color:var(--muted);margin-bottom:12px">${ic('bed')}</div>
-      <div class="font-display" style="font-size:24px;margin-bottom:6px">PIHENŐNAP</div>
-      <p style="color:var(--muted);font-size:13px;margin:0">Az izom pihenés közben nő. Ma vedd könnyebben.</p>
-      <div style="margin-top:20px"><button class="btn-primary" onclick="takeRestDay()">PIHENŐ RÖGZÍTÉSE</button></div>
+    card.innerHTML=`<div class="card text-center" style="padding:26px 20px">
+      <div style="font-size:46px;color:var(--dim);margin-bottom:8px">${ic('bed')}</div>
+      <div class="hand" style="font-size:28px;margin-bottom:4px">Pihenőnap</div>
+      <p class="dim" style="font-size:14px;margin:0 0 16px">Az izom pihenés közben nő. Ma vedd könnyebben.</p>
+      <button class="btn-primary" onclick="takeRestDay()">Pihenő rögzítése</button>
     </div>`;
   }
 
+  /* --- heti diagram --- */
+  const vols=weekVolumes();
+  const total=vols.reduce((a,b)=>a+b,0);
+  document.getElementById('home-chart-card').innerHTML=`
+    <div class="chartbox">
+      <div class="chart">${hatchChart(vols,DAYS_HU,'heti volumen')}</div>
+      <div>
+        <div class="totalring">
+          <div class="t">Összesen</div>
+          <div class="v">${total>=1000?(total/1000).toFixed(1)+'t':total}</div>
+          <div class="u">${total>=1000?'':'kg'}</div>
+        </div>
+        <div class="tiny text-center" style="margin-top:8px">${total>0?'Szép munka! ♥':'Kezdj bele!'}</div>
+      </div>
+    </div>`;
+
+  /* --- heti cél --- */
+  const doneThisWeek=vols.filter(v=>v>0).length;
+  const wg=state.weeklyGoal||4;
+  document.getElementById('week-goal-card').innerHTML=`
+    <div class="goalrow">
+      <div class="ring s2" style="color:var(--pink)">${ic('target')}</div>
+      <div style="flex:1;min-width:0">
+        <div class="flex justify-between items-end mb-1">
+          <div><div class="gname">Heti edzések</div><div class="gsub">cél: ${wg} alkalom</div></div>
+          <div class="gval num">${doneThisWeek} / ${wg}</div>
+        </div>
+        <div class="hbar" style="color:var(--pink)"><i style="width:${Math.min(100,doneThisWeek/wg*100)}%"></i></div>
+      </div>
+      <div class="gpct" style="color:var(--pink)">${Math.round(Math.min(100,doneThisWeek/wg*100))}%</div>
+    </div>`;
+
+  /* --- edzéscél kártyák --- */
   document.getElementById('goal-grid').innerHTML=Object.entries(goals).map(([key,g])=>`
     <div class="goal-card ${state.goal===key?'active':''}" onclick="setGoal('${key}')">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-        <span style="font-size:20px;color:${state.goal===key?'var(--accent)':'var(--text)'}">${ic(g.icon,20)}</span>
-        ${state.goal===key?`<span style="color:var(--accent);font-size:14px">${ic('check',14)}</span>`:''}
-        ${key==='calisthenics'?`<span onclick="event.stopPropagation();showCalisthenicsInfo()" style="color:var(--muted);font-size:14px;cursor:pointer">${ic('info',14)}</span>`:''}
+      <div class="flex justify-between items-start mb-2">
+        <span style="font-size:21px;color:${state.goal===key?'var(--accent)':'var(--dim)'}">${ic(g.icon,21)}</span>
+        ${state.goal===key?`<span style="color:var(--accent);font-size:15px">${ic('check',15)}</span>`:''}
+        ${key==='calisthenics'?`<span onclick="event.stopPropagation();showCalisthenicsInfo()" style="color:var(--faint);font-size:15px;cursor:pointer">${ic('info',15)}</span>`:''}
       </div>
-      <div class="font-display" style="font-size:17px;line-height:1.1;margin-bottom:4px">${esc(g.name.toUpperCase())}</div>
-      <div style="font-size:10px;color:var(--muted)">${esc(g.desc)}</div>
+      <div class="hand" style="font-size:21px;line-height:1.05;margin-bottom:2px">${esc(g.name)}</div>
+      <div class="tiny">${esc(g.desc)}</div>
     </div>`).join('');
 
   const todayStr=getDayOfWeek();
@@ -665,7 +769,7 @@ function renderPlan(){
     let cls='day-pill';
     if(w.day===todayStr) cls+=' today';
     else if(w.muscles.length===0) cls+=' rest';
-    return `<div class="${cls}"><span style="font-size:9px;opacity:.7">${esc(w.day.toUpperCase())}</span><span style="font-size:8px;font-weight:700">${w.muscles.length===0?'PIHEN':esc(w.name.split(' ')[0].toUpperCase())}</span></div>`;
+    return `<div class="${cls}"><span style="opacity:.75">${esc(w.day)}</span><span>${w.muscles.length===0?'pihen':esc(w.name.split(' ')[0])}</span></div>`;
   }).join('');
 
   renderRecovery();
@@ -679,15 +783,15 @@ function renderRecovery(){
     if(r.label==='KÉSZ') ready++;
     return `<div class="muscle-row">
       <div class="label">${muscleNamesHu[m]}</div>
-      <div class="muscle-bar"><div class="muscle-bar-fill" style="width:${r.pct}%;background:${r.color}"></div></div>
-      <div class="status" style="color:${r.color};width:80px;text-align:right">${r.label}</div>
+      <div class="muscle-bar" style="color:${r.color}"><div class="muscle-bar-fill" style="width:${r.pct}%"></div></div>
+      <div class="status" style="color:${r.color};width:74px;text-align:right">${r.label.toLowerCase()}</div>
     </div>`;
   }).join('');
   document.getElementById('recovery-summary').textContent=`${ready} / ${muscles.length} kész`;
 
   document.querySelectorAll('.muscle-part-recov').forEach(el=>{
     const r=getRecoveryLevel(el.dataset.muscle);
-    el.style.fill = r.label==='KÉSZ' ? 'rgba(0,217,111,0.4)' : (r.label==='PIHEN' ? 'rgba(255,92,31,0.5)' : 'rgba(255,184,0,0.4)');
+    el.style.fill = r.label==='KÉSZ' ? 'rgba(125,220,106,.45)' : (r.label==='PIHEN' ? 'rgba(240,75,116,.5)' : 'rgba(245,182,66,.45)');
   });
   const legend=document.getElementById('recovery-legend');
   if(legend) legend.innerHTML=muscles.map(m=>{
@@ -714,25 +818,26 @@ function renderTrain(){
   const s=state.activeSession;
   const ex=s.exercises[s.currentExerciseIndex];
   if(!ex) return;
-  document.getElementById('session-day-name').textContent=s.workoutName.toUpperCase();
-  document.getElementById('exercise-counter').textContent=`GYAKORLAT ${s.currentExerciseIndex+1} / ${s.exercises.length}`;
+  document.getElementById('session-day-name').textContent=s.workoutName;
+  document.getElementById('exercise-counter').textContent=`${s.currentExerciseIndex+1}. gyakorlat / ${s.exercises.length}`;
   const totalSets=s.exercises.reduce((sum,e)=>sum+e.sets,0);
   document.getElementById('session-progress').style.width=(s.completedSets.length/totalSets*100)+'%';
   const vol=s.completedSets.reduce((sum,set)=>sum+set.weight*set.reps,0);
-  document.getElementById('volume-so-far').textContent=`${vol.toLocaleString('hu')} KG MEGEMELVE`;
+  document.getElementById('volume-so-far').textContent=`${vol.toLocaleString('hu')} kg megemelve`;
   const cat=muscleCategoryMap[ex.muscle]||'core';
-  document.getElementById('muscle-target').textContent=(muscleNamesHu[ex.muscle]||ex.muscle).toUpperCase();
-  document.getElementById('exercise-name').innerHTML=esc(ex.name.toUpperCase()).replace(/ /g,'<br>');
+  document.getElementById('muscle-target').textContent=muscleNamesHu[ex.muscle]||ex.muscle;
+  document.getElementById('exercise-name').innerHTML=esc(ex.name);
   document.getElementById('set-display').textContent=`${s.currentSet}/${ex.sets}`;
   document.getElementById('reps-display').textContent=ex.reps;
   document.getElementById('weight-display').textContent=ex.weight;
   document.getElementById('weight-input').value=ex.weight;
   document.getElementById('reps-input').value=ex.reps;
 
+  // a dolgoztatott izom satírozva emelődik ki (a rajzolt stílushoz igazodva)
   document.querySelectorAll('.muscle-part').forEach(el=>{
     const on=el.dataset.muscle===cat;
-    el.style.fill=on?'var(--accent)':'#2a2a2e';
-    el.style.filter=on?'drop-shadow(0 0 6px var(--accent))':'none';
+    el.style.fill=on?'url(#hatchP)':'#141418';
+    el.style.stroke=on?'var(--accent)':'#4c4c58';
   });
 
   const ind=document.getElementById('set-indicators');
@@ -749,7 +854,7 @@ function renderDiet(){
   const d=new Date(state.diet.selectedDate);
   const todayStr=new Date().toDateString();
   const isToday=state.diet.selectedDate===todayStr;
-  document.getElementById('diet-day-label').textContent=isToday?'MA':(d<new Date(todayStr)?'MÚLT':'JÖVŐ');
+  document.getElementById('diet-day-label').textContent=isToday?'Ma':(d<new Date(todayStr)?'Múlt':'Jövő');
   const months=['Jan','Feb','Már','Ápr','Máj','Jún','Júl','Aug','Szep','Okt','Nov','Dec'];
   document.getElementById('diet-date-label').textContent=`${months[d.getMonth()]} ${d.getDate()}.`;
 
@@ -762,11 +867,11 @@ function renderDiet(){
   document.getElementById('cal-goal-display').textContent=state.diet.calorieGoal;
   const rem=state.diet.calorieGoal-t.cals;
   document.getElementById('cal-remaining').textContent=Math.abs(rem);
-  document.getElementById('cal-status').textContent=rem>=0?'KCAL HÁTRAVAN':'KCAL FELETT';
-  document.getElementById('cal-status').style.color=rem>=0?'var(--accent)':'var(--danger)';
-  const ring=document.getElementById('cal-ring');
-  ring.style.strokeDashoffset=314.16*(1-Math.min(1,t.cals/state.diet.calorieGoal));
-  ring.style.stroke=rem>=0?'var(--accent)':'var(--danger)';
+  document.getElementById('cal-status').textContent=rem>=0?'kcal hátravan':'kcal felett';
+  document.getElementById('cal-status').style.color=rem>=0?'var(--faint)':'var(--danger)';
+  const calBar=document.getElementById('cal-bar');
+  calBar.style.width=Math.min(100,t.cals/state.diet.calorieGoal*100)+'%';
+  calBar.parentElement.style.color=rem>=0?'var(--lime)':'var(--danger)';
 
   [['p',t.p,state.diet.macrosGoal.p],['c',t.c,state.diet.macrosGoal.c],['f',t.f,state.diet.macrosGoal.f]].forEach(([k,val,goal])=>{
     document.getElementById(k+'-consumed').textContent=val;
@@ -776,18 +881,18 @@ function renderDiet(){
 
   const ml=document.getElementById('meals-list');
   ml.innerHTML = meals.length===0
-    ? `<div style="text-align:center;color:var(--muted);font-size:13px;padding:10px 0">Még nincs rögzített étkezés.</div>`
+    ? `<div style="text-align:center;color:var(--dim);font-size:13px;padding:10px 0">Még nincs rögzített étkezés.</div>`
     : meals.map(m=>`<div class="meal-item">
         <div style="flex:1">
           <div style="font-weight:600;font-size:14px">${esc(m.name)}</div>
-          <div class="font-mono" style="font-size:10px;color:var(--muted)">F:${m.p}g · Sz:${m.c}g · Z:${m.f}g</div>
+          <div class="num" style="font-size:10px;color:var(--dim)">F:${m.p}g · Sz:${m.c}g · Z:${m.f}g</div>
         </div>
         <div style="text-align:right;display:flex;align-items:center;gap:10px">
           <div>
-            <div class="font-mono" style="font-size:16px;font-weight:700;color:var(--accent)">${m.cals}</div>
-            <div style="font-size:9px;color:var(--muted);text-transform:uppercase">kcal</div>
+            <div class="num" style="font-size:16px;font-weight:700;color:var(--accent)">${m.cals}</div>
+            <div style="font-size:9px;color:var(--dim);text-transform:uppercase">kcal</div>
           </div>
-          <button class="icon-btn" onclick="deleteMeal('${m.id}')" style="width:30px;height:30px;background:transparent;border:none;color:var(--muted);font-size:12px">${ic('trash',12)}</button>
+          <button class="icon-btn" onclick="deleteMeal('${m.id}')" style="width:30px;height:30px;background:transparent;border:none;color:var(--dim);font-size:12px">${ic('trash',12)}</button>
         </div></div>`).join('');
 
   const taken=state.diet.takenSupplements[key]||[];
@@ -797,7 +902,7 @@ function renderDiet(){
       <div class="supplement-check">${on?ic('check',12):''}</div>
       <div style="flex:1">
         <div style="font-weight:600;font-size:14px">${esc(s.name)}</div>
-        <div style="font-size:11px;color:var(--muted)">${esc(s.dose||'')}${s.dose&&s.time?' · ':''}${esc(s.time||'')}</div>
+        <div style="font-size:11px;color:var(--dim)">${esc(s.dose||'')}${s.dose&&s.time?' · ':''}${esc(s.time||'')}</div>
       </div>
       <button onclick="event.stopPropagation();deleteSupplement('${s.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:4px;font-size:12px">${ic('trash',12)}</button>
     </div>`;
@@ -806,55 +911,51 @@ function renderDiet(){
   const fs=document.getElementById('fast-status');
   if(state.diet.fasting.active){
     document.getElementById('fast-info').textContent='Böjt aktív. Maradj erős.';
-    document.getElementById('fast-btn').textContent='BÖJT MEGSZAKÍTÁSA';
-    fs.textContent='BÖJTÖL'; fs.style.background='rgba(255,92,31,0.2)'; fs.style.color='var(--accent-2)';
+    document.getElementById('fast-btn').textContent='Böjt megszakítása';
+    fs.textContent='böjtöl'; fs.style.background='rgba(255,92,31,0.2)'; fs.style.color='var(--pink)';
     startFastingTimer();
   }else{
     if(fastingInterval){ clearInterval(fastingInterval); fastingInterval=null; }
     document.getElementById('fast-info').textContent='Indíts böjtöt a 16 órás ablakhoz.';
-    document.getElementById('fast-btn').textContent='BÖJT KEZDÉSE';
-    fs.textContent='INAKTÍV'; fs.style.background='transparent'; fs.style.color='var(--muted)';
+    document.getElementById('fast-btn').textContent='Böjt kezdése';
+    fs.textContent='inaktív'; fs.style.background='transparent'; fs.style.color='var(--dim)';
     document.getElementById('fast-timer').textContent='16:00';
-    document.getElementById('fast-ring').style.strokeDashoffset=251.2;
-    document.getElementById('fast-ring').style.stroke='var(--accent-2)';
+    document.getElementById('fast-bar').style.width='0%';
   }
 }
 
 /* ---------------------------------------------------------------- RENDER: STAT */
 function renderProgress(){
-  const chart=document.getElementById('volume-chart'), labels=document.getElementById('volume-chart-labels');
   const recent=realWorkouts(state).slice(-7);
-  const maxVol=Math.max(1000,...recent.map(w=>w.volume));
-  while(chart.children.length<7){
-    const bar=document.createElement('div'); bar.style.flex='1'; bar.className='chart-bar'; chart.appendChild(bar);
-    const l=document.createElement('div'); l.style.cssText='flex:1;text-align:center;font-size:9px;color:var(--muted)'; labels.appendChild(l);
-  }
-  for(let i=0;i<7;i++){
-    const w=recent[i], bar=chart.children[i], l=labels.children[i];
-    if(w){
-      bar.style.height=(w.volume/maxVol*100)+'%'; bar.style.opacity='1';
-      const d=new Date(w.date); l.textContent=`${d.getMonth()+1}/${d.getDate()}`;
-    }else{ bar.style.height='4px'; bar.style.opacity='0.3'; l.textContent='—'; }
+  const card=document.getElementById('progress-chart-card');
+  if(recent.length===0){
+    card.innerHTML=`<div class="tiny text-center" style="padding:14px">Fejezz be egy edzést, és itt látod a fejlődésed.</div>`;
+  }else{
+    const labels=recent.map(w=>{const d=new Date(w.date);return `${d.getMonth()+1}/${d.getDate()}`;});
+    const total=recent.reduce((s,w)=>s+w.volume,0);
+    card.innerHTML=`<div class="chart">${hatchChart(recent.map(w=>w.volume),labels,'volumen')}</div>
+      <div class="flex justify-between mt-2" style="padding:0 4px">
+        <span class="tiny">utolsó ${recent.length} edzés</span>
+        <span class="tiny num" style="color:var(--accent)">${total.toLocaleString('hu')} kg összesen</span>
+      </div>`;
   }
 
-  const prGrid=document.getElementById('pr-grid');
   const prs=Object.entries(state.personalRecords);
-  prGrid.innerHTML = prs.length===0
-    ? `<div class="card" style="grid-column:span 2;text-align:center;color:var(--muted);font-size:13px">Még nincs rekord. Kezdj el emelni!</div>`
+  document.getElementById('pr-grid').innerHTML = prs.length===0
+    ? `<div class="card tiny text-center" style="grid-column:span 2">Még nincs rekord. Kezdj el emelni!</div>`
     : prs.slice(0,6).map(([name,w])=>`<div class="stat-tile" style="text-align:left">
-        <div style="font-size:10px;color:var(--muted);letter-spacing:.1em;margin-bottom:4px;text-transform:uppercase">${esc(name)}</div>
-        <div class="font-mono" style="font-size:20px;font-weight:700;color:var(--accent)">${w} kg</div></div>`).join('');
+        <div class="tiny" style="margin-bottom:2px">${esc(name)}</div>
+        <div class="num" style="font-size:24px;color:var(--accent)">${w} kg</div></div>`).join('');
 
   const vols={};
   state.workouts.forEach(w=>{ if(w.muscleVolume) Object.entries(w.muscleVolume).forEach(([m,v])=>vols[m]=(vols[m]||0)+v); });
   const ms=Object.keys(vols).sort((a,b)=>vols[b]-vols[a]);
-  const mb=document.getElementById('muscle-breakdown');
-  mb.innerHTML = ms.length===0
-    ? `<div style="text-align:center;color:var(--muted);font-size:13px;padding:10px">Fejezz be egy edzést az elemzéshez</div>`
+  document.getElementById('muscle-breakdown').innerHTML = ms.length===0
+    ? `<div class="tiny text-center" style="padding:10px">Fejezz be egy edzést az elemzéshez</div>`
     : ms.slice(0,6).map(m=>`<div class="muscle-row">
-        <div class="label" style="width:80px;flex:none">${esc(muscleNamesHu[m]||m)}</div>
-        <div class="muscle-bar" style="flex:1;width:auto"><div class="muscle-bar-fill" style="width:${vols[m]/vols[ms[0]]*100}%;background:var(--accent)"></div></div>
-        <div class="font-mono" style="font-size:12px;width:70px;text-align:right;color:var(--accent);font-weight:700">${vols[m].toLocaleString('hu')}kg</div>
+        <div class="label" style="width:78px;flex:none">${esc(muscleNamesHu[m]||m)}</div>
+        <div class="muscle-bar" style="flex:1;width:auto;color:var(--purple)"><div class="muscle-bar-fill" style="width:${vols[m]/vols[ms[0]]*100}%"></div></div>
+        <div class="tiny num" style="width:68px;text-align:right;color:var(--accent)">${vols[m].toLocaleString('hu')}kg</div>
       </div>`).join('');
 
   renderRecovery();
@@ -864,7 +965,9 @@ function renderProgress(){
 function renderProfile(){
   document.getElementById('profile-level').textContent=state.user.level;
   document.getElementById('profile-title').textContent=getTitle(state.user.level);
-  document.getElementById('profile-total-xp').textContent=`${state.user.totalXp.toLocaleString('hu')} ÖSSZES XP`;
+  document.getElementById('profile-total-xp').textContent=`${state.user.totalXp.toLocaleString('hu')} összes XP`;
+  const nameInput=document.getElementById('profile-name');
+  if(document.activeElement!==nameInput) nameInput.value=state.user.name||'';
   document.getElementById('profile-workouts').textContent=realWorkouts(state).length;
   document.getElementById('profile-streak').textContent=state.user.streak;
   const totalVol=state.workouts.reduce((s,w)=>s+w.volume,0);
@@ -878,7 +981,7 @@ function renderProfile(){
     if(on) unlocked++;
     return `<div class="achievement ${on?'unlocked':'locked'}">
       <div class="achievement-icon">${ic(a.icon,18)}</div>
-      <div style="font-size:10px;font-weight:700;letter-spacing:.03em;line-height:1.1">${esc(a.name.toUpperCase())}</div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:.03em;line-height:1.1">${esc(a.name)}</div>
     </div>`;
   }).join('');
   document.getElementById('achievement-count').textContent=`${unlocked} / ${achievements.length}`;
@@ -919,8 +1022,8 @@ function startSession(){
   };
   state.selectedMuscleFilter=null; state.highlightedExercise=null;
   setAnatomyView('front');
-  document.getElementById('anatomy-day-name').textContent=today.name.toUpperCase();
-  document.getElementById('anatomy-hint').textContent='KOPPINTS EGY GYAKORLATRA VAGY IZOMRA';
+  document.getElementById('anatomy-day-name').textContent=today.name;
+  document.getElementById('anatomy-hint').textContent='Koppints egy gyakorlatra vagy izomra';
   renderAnatomyExerciseList(); updateAnatomyHighlights();
   saveState(); switchScreen('anatomy');
 }
@@ -985,6 +1088,13 @@ function adjustReps(delta){
   document.getElementById('reps-input').value=ex.reps;
   document.getElementById('reps-display').textContent=ex.reps;
 }
+// a köszöntéshez használt név
+document.addEventListener('input',e=>{
+  if(e.target.id==='profile-name'){
+    state.user.name=e.target.value.trim().slice(0,18);
+    saveState();
+  }
+});
 document.addEventListener('change',e=>{
   const ex=curEx(); if(!ex) return;               // aktív edzés nélkül ne fusson
   if(e.target.id==='weight-input'){
@@ -1033,7 +1143,7 @@ function skipExercise(){
   saveState();
 }
 function cancelSession(){
-  askConfirm('Edzés megszakítása?','Az eddig rögzített szettek elvesznek.','MEGSZAKÍTÁS',()=>{
+  askConfirm('Edzés megszakítása?','Az eddig rögzített szettek elvesznek.','Megszakítás',()=>{
     state.activeSession=null; endRestTimer(); releaseWakeLock();
     if(sessionTimerInt) clearInterval(sessionTimerInt);
     saveState(); switchScreen('plan');
@@ -1057,7 +1167,7 @@ function startRestTimer(seconds){
   const s=state.activeSession;
   const nextEx=s.exercises[s.currentExerciseIndex];
   document.getElementById('next-exercise').textContent = nextEx
-    ? `${nextEx.name.toUpperCase()} · ${s.currentSet}. SZETT` : 'EDZÉS BEFEJEZVE';
+    ? `${nextEx.name} · ${s.currentSet}. szett` : 'Edzés befejezve';
 
   setTimeout(()=>{ circle.style.strokeDashoffset=C; },50);
   restInterval=setInterval(()=>{
@@ -1113,7 +1223,7 @@ function finishSession(){
   });
   saveState(); renderTrain();
 
-  document.getElementById('summary-title').textContent=s.workoutName.toUpperCase()+' VÉGE';
+  document.getElementById('summary-title').textContent=s.workoutName+' kész';
   document.getElementById('summary-duration').textContent=`${Math.floor(duration/60)}:${String(duration%60).padStart(2,'0')}`;
   document.getElementById('summary-volume').textContent=volume.toLocaleString('hu')+' kg';
   document.getElementById('summary-sets').textContent=sets;
@@ -1123,19 +1233,19 @@ function finishSession(){
   if(s.newPRs.length){
     prBox.style.display='block';
     document.getElementById('summary-prs-list').innerHTML=s.newPRs.map(pr=>
-      `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+      `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(233,233,238,.16)">
         <span style="font-size:13px">${esc(pr.name)}</span>
-        <span class="font-mono" style="color:var(--warning);font-weight:700">${pr.weight}kg <span class="pr-badge">PR</span></span></div>`).join('');
+        <span class="num" style="color:var(--warning);font-weight:700">${pr.weight}kg <span class="pr-badge">PR</span></span></div>`).join('');
   }else prBox.style.display='none';
 
   const achBox=document.getElementById('summary-achievements');
   if(s.newAchievements.length){
     achBox.style.display='block';
     document.getElementById('summary-achievements-list').innerHTML=s.newAchievements.map(a=>
-      `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+      `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(233,233,238,.16)">
         <div class="achievement-icon" style="width:36px;height:36px;font-size:16px;background:var(--accent);color:#000">${ic(a.icon,16)}</div>
         <div><div style="font-size:13px;font-weight:700">${esc(a.name)}</div>
-        <div style="font-size:11px;color:var(--muted)">${esc(a.desc)}</div></div></div>`).join('');
+        <div style="font-size:11px;color:var(--dim)">${esc(a.desc)}</div></div></div>`).join('');
   }else achBox.style.display='none';
 
   beep(); vibrate([100,50,100,50,200]); confetti(); renderAll();
@@ -1170,7 +1280,7 @@ function importData(){
   inp.click();
 }
 function resetData(){
-  askConfirm('Minden adat törlése?','Ez véglegesen törli az edzéseidet, szintedet és jelvényeidet. Nem visszavonható.','TÖRLÉS',()=>{
+  askConfirm('Minden adat törlése?','Ez véglegesen törli az edzéseidet, szintedet és jelvényeidet. Nem visszavonható.','Törlés',()=>{
     state=JSON.parse(JSON.stringify(DEFAULT_STATE));
     saveState(); renderAll(); switchScreen('plan'); showToast('Adatok törölve');
   });
@@ -1213,6 +1323,16 @@ window.addEventListener('resize',scalePhone); scalePhone();
 
 renderAll();
 
+/* A service worker cache-first, ezért fejlesztés közben makacsul a RÉGI fájlokat
+   szolgálná ki minden újratöltésnél (ez a hiba a korábbi projektekben is visszatért).
+   Localhoston ezért ki van kapcsolva, sőt a korábban regisztrált példányt is
+   eltakarítja; éles kiszolgálón normálisan működik. */
+const IS_DEV = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+  if(IS_DEV){
+    navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});
+    if(window.caches) caches.keys().then(ks=>ks.forEach(k=>caches.delete(k))).catch(()=>{});
+  }else{
+    window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+  }
 }

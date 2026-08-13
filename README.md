@@ -34,8 +34,7 @@ Helyi kiszolgáló:
 powershell -NoProfile -ExecutionPolicy Bypass -File "C:\iCloudDrive\- GAMES -\Claude gems\serve-fm.ps1"
 ```
 
-Aztán: http://localhost:5178 (a szkript `$root` változója mondja meg, melyik mappát
-szolgálja ki — szerkesztés előtt érdemes átállítani erre a repóra).
+Aztán: http://localhost:5178 — a szkript ezt a repót szolgálja ki (`$root`).
 
 A kiszolgáló `Cache-Control: no-store` fejlécet küld, de a **service worker** így is
 cache-elhet. Ha egy módosítás nem látszik: DevTools → Application → Service Workers →
