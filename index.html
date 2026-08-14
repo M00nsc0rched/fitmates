@@ -294,15 +294,19 @@ input::placeholder{color:var(--faint)}
   border-radius:inherit;filter:url(#sk3);opacity:.45}
 .supplement-item.taken .supplement-check::before{border-color:var(--success);opacity:1}
 
-/* a testábrák is kézzel rajzolt vonalvezetést kapnak */
-#body-diagram,#recovery-body,#anatomy-svg{filter:url(#sk3)}
-#body-diagram .muscle-part,#recovery-body .muscle-part-recov{stroke-width:1.4;transition:fill .3s,stroke .3s}
-.anatomy-muscle{fill:#141418;stroke:#4c4c58;stroke-width:1.3;transition:all .3s ease;cursor:pointer}
-.anatomy-muscle.active{fill:var(--accent);filter:drop-shadow(0 0 7px var(--accent))}
-.anatomy-muscle.filter{fill:var(--lime);filter:drop-shadow(0 0 7px var(--lime))}
-.anatomy-muscle.dim{fill:#101013;opacity:.4}
-.muscle-label{fill:var(--dim);font-family:'Kalam',cursive;font-size:9px;text-anchor:middle;opacity:0;transition:opacity .3s}
-.muscle-label.show{opacity:1;fill:var(--ink)}
+/* ---------- ANATÓMIAI TESTÁBRA ----------
+   Sötét szürke sziluett + világosabb izomcsoportok (a referencia tónusai).
+   Halk firka-szűrő, hogy illeszkedjen a rajzolt stílushoz, de az anatómia
+   felismerhető maradjon. */
+.bodyfig{width:100%;height:100%;display:block;filter:url(#sk-body)}
+.bodyfig .silh{fill:#32323b;stroke:#4c4c58;stroke-width:1.6}
+.bodyfig .mus{fill:#8e8e9d;stroke:#a6a6b5;stroke-width:.9;transition:fill .3s,stroke .3s,opacity .3s}
+.bodyfig .mus.anatomy-muscle{cursor:pointer}
+/* kiemelés: a dolgoztatott izom satírozva, a többi elhalkul */
+.bodyfig .mus.active{fill:url(#hatchP);stroke:var(--purple);stroke-width:1.5}
+.bodyfig .mus.filter{fill:url(#hatchL);stroke:var(--lime);stroke-width:1.5}
+.bodyfig .mus.dim{fill:#41414b;stroke:#4e4e5a;opacity:.5}
+#recovery-figure .bodyfig{width:73px;height:auto}
 
 .timer-overlay{position:absolute;inset:0;background:rgba(10,10,12,.975);backdrop-filter:blur(16px);
   z-index:80;display:none;flex-direction:column;align-items:center;justify-content:center;
@@ -359,12 +363,20 @@ input::placeholder{color:var(--faint)}
     <feTurbulence type="fractalNoise" baseFrequency="0.055" numOctaves="2" seed="9" result="t"/>
     <feDisplacementMap in="SourceGraphic" in2="t" scale="1.1" xChannelSelector="R" yChannelSelector="G"/>
   </filter>
+  <!-- a testábrához nagyon halk torzítás: rajzolt hatás, de olvasható anatómia -->
+  <filter id="sk-body" x="-6%" y="-6%" width="112%" height="112%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="23" result="t"/>
+    <feDisplacementMap in="SourceGraphic" in2="t" scale="1.2" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
   <!-- ceruza-satírozás -->
   <pattern id="hatchP" width="7" height="7" patternTransform="rotate(48)" patternUnits="userSpaceOnUse">
     <line x1="0" y1="0" x2="0" y2="7" stroke="#a970f0" stroke-width="2.4"/>
   </pattern>
   <pattern id="hatchW" width="6" height="6" patternTransform="rotate(48)" patternUnits="userSpaceOnUse">
     <line x1="0" y1="0" x2="0" y2="6" stroke="#e9e9ee" stroke-width="1.1" opacity=".33"/>
+  </pattern>
+  <pattern id="hatchL" width="7" height="7" patternTransform="rotate(48)" patternUnits="userSpaceOnUse">
+    <line x1="0" y1="0" x2="0" y2="7" stroke="#a3e635" stroke-width="2.4"/>
   </pattern>
 </defs>
 
@@ -530,59 +542,7 @@ input::placeholder{color:var(--faint)}
       </div>
 
       <div class="px-5 mb-2 relative" style="height:330px">
-        <svg viewBox="0 0 200 420" style="width:100%;height:100%" id="anatomy-svg">
-          <g id="anatomy-front">
-            <ellipse cx="100" cy="30" rx="15" ry="20" fill="#141418" stroke="#3a3a44" stroke-width="1.3"/>
-            <path d="M92,48 L108,48 L112,65 L88,65 Z" class="anatomy-muscle" data-muscle="core"/>
-            <path d="M70,65 Q100,55 130,65 L125,78 Q100,70 75,78 Z" class="anatomy-muscle" data-muscle="shoulders"/>
-            <path d="M70,65 L45,85 Q40,110 55,105 L70,78 Z" class="anatomy-muscle" data-muscle="shoulders"/>
-            <path d="M130,65 L155,85 Q160,110 145,105 L130,78 Z" class="anatomy-muscle" data-muscle="shoulders"/>
-            <path d="M75,78 Q100,72 100,100 L100,110 Q87,110 70,100 Z" class="anatomy-muscle" data-muscle="chest"/>
-            <path d="M125,78 Q100,72 100,100 L100,110 Q113,110 130,100 Z" class="anatomy-muscle" data-muscle="chest"/>
-            <path d="M47,108 Q35,135 42,155 L58,150 Q55,125 60,110 Z" class="anatomy-muscle" data-muscle="arms"/>
-            <path d="M153,108 Q165,135 158,155 L142,150 Q145,125 140,110 Z" class="anatomy-muscle" data-muscle="arms"/>
-            <path d="M42,155 L58,150 L52,200 L38,195 Z" class="anatomy-muscle" data-muscle="arms"/>
-            <path d="M158,155 L142,150 L148,200 L162,195 Z" class="anatomy-muscle" data-muscle="arms"/>
-            <path d="M85,110 L115,110 L115,220 L85,220 Z" class="anatomy-muscle" data-muscle="core"/>
-            <line x1="85" y1="130" x2="115" y2="130" stroke="#0a0a0c" stroke-width="2"/>
-            <line x1="85" y1="150" x2="115" y2="150" stroke="#0a0a0c" stroke-width="2"/>
-            <line x1="85" y1="170" x2="115" y2="170" stroke="#0a0a0c" stroke-width="2"/>
-            <line x1="85" y1="190" x2="115" y2="190" stroke="#0a0a0c" stroke-width="2"/>
-            <path d="M70,100 L85,110 L85,220 L75,200 Z" class="anatomy-muscle" data-muscle="core"/>
-            <path d="M130,100 L115,110 L115,220 L125,200 Z" class="anatomy-muscle" data-muscle="core"/>
-            <path d="M85,220 L105,220 Q108,270 100,320 L85,310 Q80,270 85,220 Z" class="anatomy-muscle" data-muscle="legs"/>
-            <path d="M115,220 L95,220 Q92,270 100,320 L115,310 Q120,270 115,220 Z" class="anatomy-muscle" data-muscle="legs"/>
-            <path d="M85,320 L100,320 L95,390 L85,380 Z" class="anatomy-muscle" data-muscle="legs"/>
-            <path d="M115,320 L100,320 L105,390 L115,380 Z" class="anatomy-muscle" data-muscle="legs"/>
-            <text x="100" y="95" class="muscle-label" id="label-chest">MELL</text>
-            <text x="40" y="135" class="muscle-label" id="label-arms">KAR</text>
-            <text x="100" y="170" class="muscle-label" id="label-core">TÖRZS</text>
-            <text x="100" y="275" class="muscle-label" id="label-legs">LÁB</text>
-            <text x="45" y="80" class="muscle-label" id="label-shoulders">VÁLL</text>
-          </g>
-          <g id="anatomy-back" style="display:none">
-            <ellipse cx="100" cy="30" rx="15" ry="20" fill="#141418" stroke="#3a3a44" stroke-width="1.3"/>
-            <path d="M70,65 Q100,50 130,65 L125,105 Q100,85 75,105 Z" class="anatomy-muscle" data-muscle="back"/>
-            <path d="M70,65 L45,85 Q50,110 65,105 L75,78 Z" class="anatomy-muscle" data-muscle="shoulders"/>
-            <path d="M130,65 L155,85 Q150,110 135,105 L125,78 Z" class="anatomy-muscle" data-muscle="shoulders"/>
-            <path d="M65,105 L45,110 Q35,135 45,150 L55,125 Z" class="anatomy-muscle" data-muscle="arms"/>
-            <path d="M135,105 L155,110 Q165,135 155,150 L145,125 Z" class="anatomy-muscle" data-muscle="arms"/>
-            <path d="M45,150 L55,150 L50,195 L35,190 Z" class="anatomy-muscle" data-muscle="arms"/>
-            <path d="M155,150 L145,150 L150,195 L165,190 Z" class="anatomy-muscle" data-muscle="arms"/>
-            <path d="M75,105 Q100,95 125,105 L130,175 Q100,190 70,175 Z" class="anatomy-muscle" data-muscle="back"/>
-            <path d="M80,175 Q100,165 120,175 L115,210 L85,210 Z" class="anatomy-muscle" data-muscle="back"/>
-            <path d="M75,210 L100,205 L100,260 L80,265 Z" class="anatomy-muscle" data-muscle="legs"/>
-            <path d="M125,210 L100,205 L100,260 L120,265 Z" class="anatomy-muscle" data-muscle="legs"/>
-            <path d="M80,260 L100,255 L95,325 L85,320 Z" class="anatomy-muscle" data-muscle="legs"/>
-            <path d="M120,260 L100,255 L105,325 L115,320 Z" class="anatomy-muscle" data-muscle="legs"/>
-            <path d="M85,325 L95,325 L90,395 L80,385 Z" class="anatomy-muscle" data-muscle="legs"/>
-            <path d="M115,325 L105,325 L110,395 L120,385 Z" class="anatomy-muscle" data-muscle="legs"/>
-            <text x="100" y="150" class="muscle-label" id="label-back">HÁT</text>
-            <text x="40" y="135" class="muscle-label" id="label-arms-back">TRICEPSZ</text>
-            <text x="100" y="285" class="muscle-label" id="label-legs-back">LÁB</text>
-            <text x="45" y="80" class="muscle-label" id="label-shoulders-back">HÁTSÓ VÁLL</text>
-          </g>
-        </svg>
+        <div id="anatomy-figure" style="height:100%"></div>
       </div>
 
       <div class="px-5 mb-3 text-center"><div class="tiny" id="anatomy-hint">Koppints egy gyakorlatra vagy izomra</div></div>
@@ -621,16 +581,7 @@ input::placeholder{color:var(--faint)}
 
         <div class="px-5 mb-3 text-center">
           <div class="lbl" style="color:var(--accent)" id="muscle-target">Mell</div>
-          <svg viewBox="0 0 120 200" style="width:126px;height:186px;margin:4px auto 0;display:block" id="body-diagram">
-            <ellipse cx="60" cy="15" rx="11" ry="13" fill="#141418" stroke="#4c4c58" stroke-width="1.3"/>
-            <rect x="55" y="26" width="10" height="8" fill="#141418" stroke="#4c4c58" stroke-width="1.3"/>
-            <path data-muscle="shoulders" d="M30,38 Q22,38 20,46 L26,52 L40,44 Z M90,38 Q98,38 100,46 L94,52 L80,44 Z" fill="#141418" stroke="#4c4c58" stroke-width="1.3" class="muscle-part"/>
-            <path data-muscle="chest" d="M38,38 Q60,36 82,38 L80,62 Q60,66 40,62 Z" fill="#141418" stroke="#4c4c58" stroke-width="1.3" class="muscle-part"/>
-            <path data-muscle="arms" d="M18,46 L14,90 L24,92 L28,48 Z M102,46 L106,90 L96,92 L92,48 Z" fill="#141418" stroke="#4c4c58" stroke-width="1.3" class="muscle-part"/>
-            <path data-muscle="back" d="M38,55 L42,82 L78,82 L82,55 Z" fill="#141418" stroke="#4c4c58" stroke-width="1.3" class="muscle-part"/>
-            <path data-muscle="core" d="M44,64 L76,64 L74,102 L46,102 Z" fill="#141418" stroke="#4c4c58" stroke-width="1.3" class="muscle-part"/>
-            <path data-muscle="legs" d="M44,102 L58,102 L56,182 L48,182 Z M62,102 L76,102 L72,182 L64,182 Z" fill="#141418" stroke="#4c4c58" stroke-width="1.3" class="muscle-part"/>
-          </svg>
+          <div id="body-diagram" style="width:132px;margin:4px auto 0"></div>
         </div>
 
         <div class="px-5 mb-3">
@@ -848,16 +799,7 @@ input::placeholder{color:var(--faint)}
       <div class="px-5 mb-4">
         <div class="sec-row"><div class="sec" style="font-size:22px">Regenerációs térkép</div></div>
         <div class="card" style="display:flex;gap:14px;align-items:center">
-          <svg viewBox="0 0 120 200" style="width:96px;height:164px;flex-shrink:0" id="recovery-body">
-            <ellipse cx="60" cy="15" rx="11" ry="13" fill="#141418" stroke="#4c4c58" stroke-width="1.3"/>
-            <rect x="55" y="26" width="10" height="8" fill="#141418" stroke="#4c4c58" stroke-width="1.3"/>
-            <path data-muscle="shoulders" d="M30,38 Q22,38 20,46 L26,52 L40,44 Z M90,38 Q98,38 100,46 L94,52 L80,44 Z" fill="#141418" stroke="#4c4c58" stroke-width="1.3" class="muscle-part-recov"/>
-            <path data-muscle="chest" d="M38,38 Q60,36 82,38 L80,62 Q60,66 40,62 Z" fill="#141418" stroke="#4c4c58" stroke-width="1.3" class="muscle-part-recov"/>
-            <path data-muscle="arms" d="M18,46 L14,90 L24,92 L28,48 Z M102,46 L106,90 L96,92 L92,48 Z" fill="#141418" stroke="#4c4c58" stroke-width="1.3" class="muscle-part-recov"/>
-            <path data-muscle="back" d="M38,55 L42,82 L78,82 L82,55 Z" fill="#141418" stroke="#4c4c58" stroke-width="1.3" class="muscle-part-recov"/>
-            <path data-muscle="core" d="M44,64 L76,64 L74,102 L46,102 Z" fill="#141418" stroke="#4c4c58" stroke-width="1.3" class="muscle-part-recov"/>
-            <path data-muscle="legs" d="M44,102 L58,102 L56,182 L48,182 Z M62,102 L76,102 L72,182 L64,182 Z" fill="#141418" stroke="#4c4c58" stroke-width="1.3" class="muscle-part-recov"/>
-          </svg>
+          <div id="recovery-figure" style="width:150px;flex-shrink:0;display:flex;gap:4px"></div>
           <div style="flex:1" id="recovery-legend"></div>
         </div>
       </div>
@@ -905,7 +847,7 @@ input::placeholder{color:var(--faint)}
           <button class="btn-secondary" onclick="importData()">Visszatöltés</button>
         </div>
         <button class="btn-secondary" onclick="resetData()" style="color:var(--danger)">Minden adat törlése</button>
-        <div class="tiny text-center" style="margin-top:16px">Fit Mates v<span id="app-version">2</span></div>
+        <div class="tiny text-center" style="margin-top:16px">Fit Mates v<span id="app-version">3</span></div>
       </div>
     </section>
 

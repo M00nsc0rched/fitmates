@@ -3,7 +3,7 @@
    A verziószám EGYEZIK a sw.js CACHE nevében lévő számmal (fitmates-vN).
    ========================================================================== */
 'use strict';
-const APP_VERSION = 2;
+const APP_VERSION = 3;
 
 /* ---------------------------------------------------------------- ÁLLAPOT */
 const DEFAULT_STATE = {
@@ -70,6 +70,109 @@ let state = loadState();
 /* ---------------------------------------------------------------- IKONOK */
 function ic(name, size){
   return `<svg class="ic"${size?` style="font-size:${size}px"`:''}><use href="#i-${name}"/></svg>`;
+}
+
+/* ============================================================================
+   ANATÓMIAI TESTÁBRA (elöl- és hátulnézet)
+   A körvonal és az izomcsoportok pontlistákból, Catmull-Rom simítással
+   készülnek — a jobb oldali alakzatokat tükrözzük, így az ábra garantáltan
+   szimmetrikus. Minden izomcsoport ÖNÁLLÓ <path> data-muscle attribútummal,
+   ezért marad kattintható és külön színezhető (kiemelés, regenerációs
+   hőtérkép). Ezért nem raszterkép: azt nem lehetne csoportonként színezni.
+   ========================================================================== */
+const BODY_VB = '0 0 200 430';
+
+// pontlistából lekerekített útvonal (Catmull-Rom → köbös Bézier)
+function smoothPath(pts, closed){
+  if(pts.length<3) return '';
+  const n=pts.length;
+  const at=i=>closed ? pts[(i+n)%n] : pts[Math.max(0,Math.min(n-1,i))];
+  let d=`M${pts[0][0]} ${pts[0][1]}`;
+  const segs=closed?n:n-1;
+  for(let i=0;i<segs;i++){
+    const p0=at(i-1),p1=at(i),p2=at(i+1),p3=at(i+2);
+    const c1x=p1[0]+(p2[0]-p0[0])/6, c1y=p1[1]+(p2[1]-p0[1])/6;
+    const c2x=p2[0]-(p3[0]-p1[0])/6, c2y=p2[1]-(p3[1]-p1[1])/6;
+    d+=` C${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  return d+(closed?'Z':'');
+}
+const mirrorPts = pts => pts.map(([x,y])=>[200-x,y]);
+// félkörvonalból zárt, szimmetrikus alak (a két végpont a középvonalon van)
+const outline = half => smoothPath(half.concat(mirrorPts(half).reverse().slice(1,-1)), true);
+
+// jobb oldali félkörvonal: nyaktól a lábfejig, majd a láb belső oldalán vissza
+const SILHOUETTE = [
+  [100,58],[108,60],[110,70],
+  [122,74],[138,79],[148,86],
+  [155,96],[157,108],
+  [158,124],[157,142],[155,158],[154,168],
+  [153,182],[150,198],[148,212],[147,222],
+  [147,232],[145,243],[141,247],[136,246],[134,238],
+  [134,226],[136,210],[137,194],[137,178],[136,168],
+  [134,152],[132,134],[130,118],[128,112],
+  [127,124],[128,140],[126,154],[124,168],
+  [126,180],[132,192],[134,204],
+  [134,220],[133,240],[130,262],[127,282],[124,298],[123,306],
+  [125,318],[126,332],[124,348],[120,366],[118,378],
+  [121,388],[130,396],[133,401],[126,404],[112,403],
+  [107,396],[106,384],[107,368],[109,350],[110,332],[109,314],[108,306],
+  [106,288],[104,264],[102,238],[100,216]
+];
+
+// hasfal: sorokba rendezett kis alakzatok (a referenciakép rácsa)
+function absRows(){
+  const out=[];
+  [[121,135],[138,152],[155,169]].forEach(([y1,y2])=>{
+    out.push({m:'core',pts:[[101,y1],[112,y1+1],[114,(y1+y2)/2],[112,y2],[101,y2-1]]});
+  });
+  return out;
+}
+
+const BODY = {
+  front:[
+    {m:'back',    pts:[[104,68],[117,75],[130,83],[124,90],[110,83],[102,74]]},           // felső trapéz
+    {m:'shoulders',pts:[[133,80],[145,84],[152,94],[153,106],[147,111],[137,102],[131,88]]},
+    {m:'chest',   pts:[[101,82],[117,84],[127,93],[127,107],[117,113],[103,111],[100,97]]},
+    {m:'arms',    pts:[[139,112],[149,118],[153,132],[152,150],[146,157],[140,144],[137,126]]}, // bicepsz
+    {m:'arms',    pts:[[139,178],[147,184],[148,198],[145,212],[141,214],[138,200],[137,186]]}, // alkar
+    {m:'core',    pts:[[121,118],[127,124],[127,138],[123,148],[118,142],[118,126]]},     // ferde hasizom
+    ...absRows(),
+    {m:'core',    pts:[[102,174],[114,178],[117,192],[111,201],[103,197],[100,184]]},     // alsó has
+    {m:'legs',    pts:[[103,206],[112,212],[114,228],[109,241],[104,232],[101,215]]},     // közelítő
+    {m:'legs',    pts:[[124,220],[132,232],[131,258],[127,280],[121,292],[118,272],[119,244],[121,228]]}, // külső comb
+    {m:'legs',    pts:[[106,226],[116,232],[118,254],[115,276],[109,288],[105,264],[103,240]]},  // belső comb
+    {m:'legs',    pts:[[112,312],[121,320],[122,342],[118,360],[113,356],[110,334]]}      // lábszár
+  ],
+  back:[
+    {m:'back',    pts:[[101,64],[107,68],[108,96],[101,100]],solo:false},                 // trapéz a gerinc mellett
+    {m:'back',    pts:[[105,70],[118,77],[130,85],[123,92],[109,85],[103,77]]},           // felső trapéz
+    {m:'back',    pts:[[101,92],[114,96],[121,107],[113,115],[101,110]]},                 // rombusz
+    {m:'shoulders',pts:[[133,80],[146,85],[152,96],[151,108],[143,110],[135,98]]},
+    {m:'back',    pts:[[102,114],[118,120],[128,134],[126,152],[115,161],[103,154]]},     // latissimus
+    {m:'arms',    pts:[[139,112],[149,118],[153,134],[151,152],[145,158],[139,142]]},     // tricepsz
+    {m:'arms',    pts:[[139,178],[147,184],[148,198],[145,212],[141,214],[138,200],[137,186]]},
+    {m:'back',    pts:[[82,170],[100,164],[118,170],[100,177]],solo:true},                // deréktájék
+    {m:'legs',    pts:[[102,186],[119,190],[131,202],[129,218],[115,224],[103,215]]},     // farizom
+    {m:'legs',    pts:[[105,230],[122,236],[128,254],[124,280],[114,291],[107,272],[103,248]]}, // combhajlító
+    {m:'legs',    pts:[[112,306],[121,313],[123,332],[119,352],[113,348],[111,326]]}      // vádli
+  ]
+};
+
+/* SVG-ábra előállítása. `cls` a kiemelés-logikának kell (anatomy-muscle /
+   muscle-part / muscle-part-recov), így a meglévő színező kód változatlan. */
+function bodySvg(view, cls, style){
+  const parts=BODY[view]||BODY.front;
+  let mus='';
+  parts.forEach((p,i)=>{
+    const add=`class="mus ${cls}" data-muscle="${p.m}" data-i="${i}"`;
+    mus+=`<path ${add} d="${smoothPath(p.pts,true)}"/>`;
+    if(!p.solo) mus+=`<path ${add} d="${smoothPath(mirrorPts(p.pts),true)}"/>`;
+  });
+  return `<svg class="bodyfig" viewBox="${BODY_VB}"${style?` style="${style}"`:''}>
+    <ellipse class="silh" cx="100" cy="38" rx="19" ry="23"/>
+    <path class="silh" d="${outline(SILHOUETTE)}"/>
+    ${mus}</svg>`;
 }
 
 /* ---------------------------------------------------------------- ADATOK */
@@ -352,9 +455,14 @@ function setAnatomyView(view){
   state.anatomyView=view;
   document.getElementById('view-front-btn').classList.toggle('active',view==='front');
   document.getElementById('view-back-btn').classList.toggle('active',view==='back');
-  document.getElementById('anatomy-front').style.display = view==='front'?'block':'none';
-  document.getElementById('anatomy-back').style.display = view==='back'?'block':'none';
+  document.getElementById('anatomy-figure').innerHTML=bodySvg(view,'anatomy-muscle');
   updateAnatomyHighlights();
+}
+// a regenerációs hőtérkép mindkét nézetet mutatja (mint a referenciakép)
+function renderRecoveryFigure(){
+  const box=document.getElementById('recovery-figure');
+  if(box && !box.children.length)
+    box.innerHTML=bodySvg('front','muscle-part-recov')+bodySvg('back','muscle-part-recov');
 }
 function tapMuscle(muscleCat){
   if(!state.activeSession) return;
@@ -387,21 +495,14 @@ function selectExerciseInOverview(idx){
 }
 function updateAnatomyHighlights(){
   if(!state.activeSession) return;
-  document.querySelectorAll('.muscle-label').forEach(l=>l.classList.remove('show'));
   document.querySelectorAll('.anatomy-muscle').forEach(m=>{
     m.classList.remove('active','filter','dim');
     const cat=m.dataset.muscle;
-    const showLabel=()=>{
-      const l=document.getElementById('label-'+cat)||document.getElementById('label-'+cat+'-back');
-      if(l) l.classList.add('show');
-    };
     if(state.highlightedExercise!==null){
       const ex=state.activeSession.exercises[state.highlightedExercise];
-      if(cat===(muscleCategoryMap[ex.muscle]||'core')){ m.classList.add('active'); showLabel(); }
-      else m.classList.add('dim');
+      m.classList.add(cat===(muscleCategoryMap[ex.muscle]||'core') ? 'active' : 'dim');
     }else if(state.selectedMuscleFilter){
-      if(cat===state.selectedMuscleFilter){ m.classList.add('filter'); showLabel(); }
-      else m.classList.add('dim');
+      m.classList.add(cat===state.selectedMuscleFilter ? 'filter' : 'dim');
     }
   });
 }
@@ -789,9 +890,11 @@ function renderRecovery(){
   }).join('');
   document.getElementById('recovery-summary').textContent=`${ready} / ${muscles.length} kész`;
 
+  renderRecoveryFigure();
   document.querySelectorAll('.muscle-part-recov').forEach(el=>{
     const r=getRecoveryLevel(el.dataset.muscle);
-    el.style.fill = r.label==='KÉSZ' ? 'rgba(125,220,106,.45)' : (r.label==='PIHEN' ? 'rgba(240,75,116,.5)' : 'rgba(245,182,66,.45)');
+    el.style.fill = r.label==='KÉSZ' ? '#7ddc6a' : (r.label==='PIHEN' ? '#f04b74' : '#f5b642');
+    el.style.stroke = 'rgba(255,255,255,.35)';
   });
   const legend=document.getElementById('recovery-legend');
   if(legend) legend.innerHTML=muscles.map(m=>{
@@ -833,11 +936,17 @@ function renderTrain(){
   document.getElementById('weight-input').value=ex.weight;
   document.getElementById('reps-input').value=ex.reps;
 
-  // a dolgoztatott izom satírozva emelődik ki (a rajzolt stílushoz igazodva)
-  document.querySelectorAll('.muscle-part').forEach(el=>{
+  // a dolgoztatott izom satírozva emelődik ki, a többi elhalkul
+  const view = cat==='back' ? 'back' : 'front';
+  const bodyBox=document.getElementById('body-diagram');
+  if(bodyBox.dataset.view!==view){
+    bodyBox.innerHTML=bodySvg(view,'muscle-part');
+    bodyBox.dataset.view=view;
+  }
+  bodyBox.querySelectorAll('.muscle-part').forEach(el=>{
     const on=el.dataset.muscle===cat;
-    el.style.fill=on?'url(#hatchP)':'#141418';
-    el.style.stroke=on?'var(--accent)':'#4c4c58';
+    el.classList.toggle('active',on);
+    el.classList.toggle('dim',!on);
   });
 
   const ind=document.getElementById('set-indicators');
@@ -1005,7 +1114,11 @@ function switchScreen(name){
   document.getElementById('app').scrollTop=0;
 }
 document.querySelectorAll('.tab-item').forEach(t=>t.addEventListener('click',()=>switchScreen(t.dataset.screen)));
-document.querySelectorAll('.anatomy-muscle').forEach(m=>m.addEventListener('click',()=>tapMuscle(m.dataset.muscle)));
+// az ábra futásidőben készül, ezért delegált kattintás-kezelés
+document.getElementById('anatomy-figure').addEventListener('click',e=>{
+  const p=e.target.closest('.anatomy-muscle');
+  if(p) tapMuscle(p.dataset.muscle);
+});
 
 function setGoal(g){ state.goal=g; saveState(); renderPlan(); showToast(`Cél: ${goals[g].name}`); }
 
