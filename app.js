@@ -3,14 +3,14 @@
    A verziószám EGYEZIK a sw.js CACHE nevében lévő számmal (fitmates-vN).
    ========================================================================== */
 'use strict';
-const APP_VERSION = 3;
+const APP_VERSION = 4;
 
 /* ---------------------------------------------------------------- ÁLLAPOT */
 const DEFAULT_STATE = {
   user:{level:1,xp:0,streak:0,lastWorkoutDate:null,totalXp:0,name:''},
   weeklyGoal:4,
   goal:'build',
-  muscleRecovery:{chest:0,back:0,legs:0,shoulders:0,arms:0,core:0},
+  muscleRecovery:{},                            // izomcsoport -> utolsó terhelés időpontja (migrateRecovery tölti)
   lastWeights:{},
   personalRecords:{},
   workouts:[],
@@ -54,10 +54,27 @@ function deepMerge(base, over){
   }
   return over === undefined ? base : over;
 }
+/* A regeneráció korábban 6 durva csoportot tárolt (chest/back/legs/shoulders/
+   arms/core). A 16 finom csoportra való átváltásnál a régi időpontokat
+   szétosztjuk az utódcsoportok között, hogy az előzmények ne vesszenek el. */
+function migrateRecovery(rec){
+  const out={};
+  MUSCLE_KEYS.forEach(k=>out[k]=0);
+  Object.entries(rec||{}).forEach(([k,v])=>{
+    if(!v) return;
+    if(MUSCLES[k]){ out[k]=Math.max(out[k],v); return; }
+    groupsOf(k).forEach(g=>{ if(out[g]!==undefined) out[g]=Math.max(out[g],v); });
+  });
+  return out;
+}
 function loadState(){
   try{
     const raw = localStorage.getItem(LS_KEY) || localStorage.getItem(LS_LEGACY);
-    if(raw) return deepMerge(JSON.parse(JSON.stringify(DEFAULT_STATE)), JSON.parse(raw));
+    if(raw){
+      const s = deepMerge(JSON.parse(JSON.stringify(DEFAULT_STATE)), JSON.parse(raw));
+      s.muscleRecovery = migrateRecovery(s.muscleRecovery);
+      return s;
+    }
   }catch(e){ console.warn('Mentés betöltése sikertelen', e); }
   return JSON.parse(JSON.stringify(DEFAULT_STATE));
 }
@@ -120,42 +137,67 @@ const SILHOUETTE = [
   [106,288],[104,264],[102,238],[100,216]
 ];
 
+/* Izomcsoportok a referencia-anyag felbontásában: a váll három részre bomlik
+   (elülső/középső/hátsó — lásd a delta-ábrát), a kar bicepszre/tricepszre/
+   alkarra, a láb combra/combhajlítóra/farizomra/vádlira. */
+const MUSCLES = {
+  trap:      {nev:'Trapéz',        ora:48},
+  front_delt:{nev:'Elülső váll',   ora:48},
+  side_delt: {nev:'Középső váll',  ora:48},
+  rear_delt: {nev:'Hátsó váll',    ora:48},
+  chest:     {nev:'Mell',          ora:72},
+  lat:       {nev:'Hát (lat)',     ora:72},
+  lower_back:{nev:'Deréktájék',    ora:72},
+  biceps:    {nev:'Bicepsz',       ora:48},
+  triceps:   {nev:'Tricepsz',      ora:48},
+  forearm:   {nev:'Alkar',         ora:24},
+  abs:       {nev:'Hasfal',        ora:24},
+  oblique:   {nev:'Ferde hasizom', ora:24},
+  glute:     {nev:'Farizom',       ora:72},
+  quad:      {nev:'Comb (elülső)', ora:72},
+  hamstring: {nev:'Comb (hátsó)',  ora:72},
+  calf:      {nev:'Vádli',         ora:24}
+};
+const MUSCLE_KEYS = Object.keys(MUSCLES);
+
 // hasfal: sorokba rendezett kis alakzatok (a referenciakép rácsa)
 function absRows(){
   const out=[];
   [[121,135],[138,152],[155,169]].forEach(([y1,y2])=>{
-    out.push({m:'core',pts:[[101,y1],[112,y1+1],[114,(y1+y2)/2],[112,y2],[101,y2-1]]});
+    out.push({m:'abs',pts:[[101,y1],[112,y1+1],[114,(y1+y2)/2],[112,y2],[101,y2-1]]});
   });
   return out;
 }
 
 const BODY = {
   front:[
-    {m:'back',    pts:[[104,68],[117,75],[130,83],[124,90],[110,83],[102,74]]},           // felső trapéz
-    {m:'shoulders',pts:[[133,80],[145,84],[152,94],[153,106],[147,111],[137,102],[131,88]]},
-    {m:'chest',   pts:[[101,82],[117,84],[127,93],[127,107],[117,113],[103,111],[100,97]]},
-    {m:'arms',    pts:[[139,112],[149,118],[153,132],[152,150],[146,157],[140,144],[137,126]]}, // bicepsz
-    {m:'arms',    pts:[[139,178],[147,184],[148,198],[145,212],[141,214],[138,200],[137,186]]}, // alkar
-    {m:'core',    pts:[[121,118],[127,124],[127,138],[123,148],[118,142],[118,126]]},     // ferde hasizom
+    {m:'trap',      pts:[[104,68],[117,75],[130,83],[124,90],[110,83],[102,74]]},
+    {m:'front_delt',pts:[[131,84],[140,87],[144,99],[139,107],[132,98],[129,88]]},
+    {m:'side_delt', pts:[[142,88],[149,92],[152,100],[152,108],[146,112],[142,103],[140,93]]},
+    {m:'chest',     pts:[[101,82],[117,84],[127,93],[127,107],[117,113],[103,111],[100,97]]},
+    {m:'biceps',    pts:[[139,112],[149,118],[153,132],[152,150],[146,157],[140,144],[137,126]]},
+    {m:'forearm',   pts:[[139,178],[147,184],[148,198],[145,212],[141,214],[138,200],[137,186]]},
+    {m:'oblique',   pts:[[121,118],[127,124],[127,138],[123,148],[118,142],[118,126]]},
     ...absRows(),
-    {m:'core',    pts:[[102,174],[114,178],[117,192],[111,201],[103,197],[100,184]]},     // alsó has
-    {m:'legs',    pts:[[103,206],[112,212],[114,228],[109,241],[104,232],[101,215]]},     // közelítő
-    {m:'legs',    pts:[[124,220],[132,232],[131,258],[127,280],[121,292],[118,272],[119,244],[121,228]]}, // külső comb
-    {m:'legs',    pts:[[106,226],[116,232],[118,254],[115,276],[109,288],[105,264],[103,240]]},  // belső comb
-    {m:'legs',    pts:[[112,312],[121,320],[122,342],[118,360],[113,356],[110,334]]}      // lábszár
+    {m:'abs',       pts:[[102,174],[114,178],[117,192],[111,201],[103,197],[100,184]]},
+    {m:'quad',      pts:[[103,206],[112,212],[114,228],[109,241],[104,232],[101,215]]},
+    {m:'quad',      pts:[[124,220],[132,232],[131,258],[127,280],[121,292],[118,272],[119,244],[121,228]]},
+    {m:'quad',      pts:[[106,226],[116,232],[118,254],[115,276],[109,288],[105,264],[103,240]]},
+    {m:'calf',      pts:[[112,312],[121,320],[122,342],[118,360],[113,356],[110,334]]}
   ],
   back:[
-    {m:'back',    pts:[[101,64],[107,68],[108,96],[101,100]],solo:false},                 // trapéz a gerinc mellett
-    {m:'back',    pts:[[105,70],[118,77],[130,85],[123,92],[109,85],[103,77]]},           // felső trapéz
-    {m:'back',    pts:[[101,92],[114,96],[121,107],[113,115],[101,110]]},                 // rombusz
-    {m:'shoulders',pts:[[133,80],[146,85],[152,96],[151,108],[143,110],[135,98]]},
-    {m:'back',    pts:[[102,114],[118,120],[128,134],[126,152],[115,161],[103,154]]},     // latissimus
-    {m:'arms',    pts:[[139,112],[149,118],[153,134],[151,152],[145,158],[139,142]]},     // tricepsz
-    {m:'arms',    pts:[[139,178],[147,184],[148,198],[145,212],[141,214],[138,200],[137,186]]},
-    {m:'back',    pts:[[82,170],[100,164],[118,170],[100,177]],solo:true},                // deréktájék
-    {m:'legs',    pts:[[102,186],[119,190],[131,202],[129,218],[115,224],[103,215]]},     // farizom
-    {m:'legs',    pts:[[105,230],[122,236],[128,254],[124,280],[114,291],[107,272],[103,248]]}, // combhajlító
-    {m:'legs',    pts:[[112,306],[121,313],[123,332],[119,352],[113,348],[111,326]]}      // vádli
+    {m:'trap',      pts:[[101,64],[107,68],[108,96],[101,100]]},
+    {m:'trap',      pts:[[105,70],[118,77],[130,85],[123,92],[109,85],[103,77]]},
+    {m:'trap',      pts:[[101,92],[114,96],[121,107],[113,115],[101,110]]},
+    {m:'rear_delt', pts:[[132,84],[141,88],[145,100],[140,108],[133,99],[130,89]]},
+    {m:'side_delt', pts:[[143,89],[149,93],[152,101],[151,109],[145,112],[142,103],[141,94]]},
+    {m:'lat',       pts:[[102,114],[118,120],[128,134],[126,152],[115,161],[103,154]]},
+    {m:'triceps',   pts:[[139,112],[149,118],[153,134],[151,152],[145,158],[139,142]]},
+    {m:'forearm',   pts:[[139,178],[147,184],[148,198],[145,212],[141,214],[138,200],[137,186]]},
+    {m:'lower_back',pts:[[82,170],[100,164],[118,170],[100,177]],solo:true},
+    {m:'glute',     pts:[[102,186],[119,190],[131,202],[129,218],[115,224],[103,215]]},
+    {m:'hamstring', pts:[[105,230],[122,236],[128,254],[124,280],[114,291],[107,272],[103,248]]},
+    {m:'calf',      pts:[[112,306],[121,313],[123,332],[119,352],[113,348],[111,326]]}
   ]
 };
 
@@ -304,13 +346,25 @@ const goals = {
     ]}}
 };
 
-// A tricepsz/bicepsz a testtérképen a "kar" régióhoz tartozik. Az 'arms'
-// önmagára képződik, különben az egyedi gyakorlatoknál undefined lett volna.
-const muscleCategoryMap = {
-  chest:'chest', back:'back', legs:'legs',
-  shoulders:'shoulders', triceps:'arms', biceps:'arms', arms:'arms', core:'core'
+/* A gyakorlatok (még) durva izomkulcsokat használnak, a testábra viszont 16
+   finom csoportot. Ez a híd köti össze a kettőt: egy gyakorlat izomkulcsa
+   megadja, MELY finom csoportok világítanak és melyek regenerálódnak. */
+const EX_TO_GROUPS = {
+  chest:    ['chest'],
+  back:     ['lat','trap'],
+  legs:     ['quad','hamstring','glute','calf'],
+  shoulders:['front_delt','side_delt','rear_delt'],
+  triceps:  ['triceps'],
+  biceps:   ['biceps'],
+  arms:     ['biceps','triceps','forearm'],
+  core:     ['abs','oblique']
 };
-const muscleNamesHu = {chest:'Mell',back:'Hát',legs:'Lábak',shoulders:'Vállak',arms:'Karok',core:'Törzs',triceps:'Tricepsz',biceps:'Bicepsz'};
+const groupsOf = m => EX_TO_GROUPS[m] || (MUSCLES[m] ? [m] : ['abs']);
+// megjelenítendő név: a finom csoportokra és a durva gyakorlat-kulcsokra is
+const COARSE_NAMES = {chest:'Mell',back:'Hát',legs:'Lábak',shoulders:'Vállak',arms:'Karok',core:'Törzs',triceps:'Tricepsz',biceps:'Bicepsz'};
+const muscleName = m => (MUSCLES[m] && MUSCLES[m].nev) || COARSE_NAMES[m] || m;
+// visszafelé kompatibilitás a régebbi kódrészekhez
+const muscleNamesHu = new Proxy({}, {get:(_,k)=>muscleName(k)});
 
 const achievements = [
   {id:'first',name:'Első vér',desc:'Fejezd be az első edzésed',icon:'dumbbell',check:s=>realWorkouts(s).length>=1},
@@ -359,12 +413,15 @@ function fmtClock(sec){
 }
 function esc(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
+/* Készültség: az izomcsoport SAJÁT regenerációs idejéhez mérve (nagy izom 72h,
+   kis izom 24h) — nem fix 48 órához, mint korábban. */
 function getRecoveryLevel(muscle){
   const last = state.muscleRecovery[muscle] || 0;
   if(!last) return {pct:100,label:'KÉSZ',color:'var(--success)'};
-  const hours = (Date.now()-last)/3600000;
-  if(hours<24) return {pct:hours/24*100,label:'PIHEN',color:'var(--pink)'};
-  if(hours<48) return {pct:50+(hours-24)/24*50,label:'MAJDNEM',color:'var(--warning)'};
+  const need = (MUSCLES[muscle] && MUSCLES[muscle].ora) || 48;
+  const pct = Math.min(100, (Date.now()-last)/3600000/need*100);
+  if(pct<50)  return {pct,label:'PIHEN',color:'var(--pink)'};
+  if(pct<100) return {pct,label:'MAJDNEM',color:'var(--warning)'};
   return {pct:100,label:'KÉSZ',color:'var(--success)'};
 }
 
@@ -486,9 +543,12 @@ function selectExerciseInOverview(idx){
     state.highlightedExercise=idx;
     const ex=state.activeSession.exercises[idx];
     state.selectedMuscleFilter=null;
-    const cat=muscleCategoryMap[ex.muscle]||'core';
-    document.getElementById('anatomy-hint').textContent=`Cél: ${muscleNamesHu[cat]||cat}`;
-    setAnatomyView(ex.muscle==='back' ? 'back' : 'front');
+    const gs=groupsOf(ex.muscle);
+    document.getElementById('anatomy-hint').textContent=`Cél: ${gs.map(muscleName).join(', ')}`;
+    // arra a nézetre váltunk, ahonnan a célizom egyáltalán látszik
+    const BACK_ONLY=['lat','trap','rear_delt','triceps','glute','hamstring','lower_back'];
+    const frontVisible=gs.some(g=>!BACK_ONLY.includes(g));
+    setAnatomyView(frontVisible ? 'front' : 'back');
   }
   updateAnatomyHighlights();
   renderAnatomyExerciseList();
@@ -500,7 +560,7 @@ function updateAnatomyHighlights(){
     const cat=m.dataset.muscle;
     if(state.highlightedExercise!==null){
       const ex=state.activeSession.exercises[state.highlightedExercise];
-      m.classList.add(cat===(muscleCategoryMap[ex.muscle]||'core') ? 'active' : 'dim');
+      m.classList.add(groupsOf(ex.muscle).includes(cat) ? 'active' : 'dim');
     }else if(state.selectedMuscleFilter){
       m.classList.add(cat===state.selectedMuscleFilter ? 'filter' : 'dim');
     }
@@ -511,7 +571,7 @@ function renderAnatomyExerciseList(){
   if(!state.activeSession) return;
   let show=state.activeSession.exercises;
   if(state.selectedMuscleFilter)
-    show=state.activeSession.exercises.filter(ex=>(muscleCategoryMap[ex.muscle]||'core')===state.selectedMuscleFilter);
+    show=state.activeSession.exercises.filter(ex=>groupsOf(ex.muscle).includes(state.selectedMuscleFilter));
   if(show.length===0){
     list.innerHTML=`<div class="card" style="text-align:center;color:var(--dim);font-size:13px">Erre az izomra ma nincs gyakorlat.</div>`;
     return;
@@ -877,18 +937,17 @@ function renderPlan(){
 }
 
 function renderRecovery(){
-  const muscles=['chest','back','legs','shoulders','arms','core'];
-  let ready=0;
-  document.getElementById('recovery-card').innerHTML=muscles.map(m=>{
-    const r=getRecoveryLevel(m);
-    if(r.label==='KÉSZ') ready++;
-    return `<div class="muscle-row">
-      <div class="label">${muscleNamesHu[m]}</div>
-      <div class="muscle-bar" style="color:${r.color}"><div class="muscle-bar-fill" style="width:${r.pct}%"></div></div>
-      <div class="status" style="color:${r.color};width:74px;text-align:right">${r.label.toLowerCase()}</div>
+  const all=MUSCLE_KEYS.map(m=>({m,r:getRecoveryLevel(m)}));
+  const ready=all.filter(x=>x.r.label==='KÉSZ').length;
+  const row=(x,small)=>`<div class="muscle-row"${small?' style="padding:5px 0"':''}>
+      <div class="label"${small?' style="font-size:12px"':''}>${muscleName(x.m)}</div>
+      <div class="muscle-bar" style="color:${x.r.color}"><div class="muscle-bar-fill" style="width:${x.r.pct}%"></div></div>
+      <div class="status" style="color:${x.r.color};width:74px;text-align:right">${x.r.label.toLowerCase()}</div>
     </div>`;
-  }).join('');
-  document.getElementById('recovery-summary').textContent=`${ready} / ${muscles.length} kész`;
+  // 16 csoport túl hosszú lista a kezdőlapra: ott a 6 legkevésbé regenerált látszik
+  const worst=[...all].sort((a,b)=>a.r.pct-b.r.pct).slice(0,6);
+  document.getElementById('recovery-card').innerHTML=worst.map(x=>row(x)).join('');
+  document.getElementById('recovery-summary').textContent=`${ready} / ${all.length} kész`;
 
   renderRecoveryFigure();
   document.querySelectorAll('.muscle-part-recov').forEach(el=>{
@@ -896,13 +955,9 @@ function renderRecovery(){
     el.style.fill = r.label==='KÉSZ' ? '#7ddc6a' : (r.label==='PIHEN' ? '#f04b74' : '#f5b642');
     el.style.stroke = 'rgba(255,255,255,.35)';
   });
+  // a Statisztika képernyőn mind a 16 csoport
   const legend=document.getElementById('recovery-legend');
-  if(legend) legend.innerHTML=muscles.map(m=>{
-    const r=getRecoveryLevel(m);
-    return `<div class="muscle-row" style="padding:5px 0">
-      <div class="label" style="font-size:12px">${muscleNamesHu[m]}</div>
-      <div class="status" style="color:${r.color};font-size:10px">${r.label}</div></div>`;
-  }).join('');
+  if(legend) legend.innerHTML=all.map(x=>row(x,true)).join('');
 }
 
 /* ---------------------------------------------------------------- RENDER: EDZÉS */
@@ -927,8 +982,8 @@ function renderTrain(){
   document.getElementById('session-progress').style.width=(s.completedSets.length/totalSets*100)+'%';
   const vol=s.completedSets.reduce((sum,set)=>sum+set.weight*set.reps,0);
   document.getElementById('volume-so-far').textContent=`${vol.toLocaleString('hu')} kg megemelve`;
-  const cat=muscleCategoryMap[ex.muscle]||'core';
-  document.getElementById('muscle-target').textContent=muscleNamesHu[ex.muscle]||ex.muscle;
+  const gs=groupsOf(ex.muscle);
+  document.getElementById('muscle-target').textContent=muscleName(ex.muscle);
   document.getElementById('exercise-name').innerHTML=esc(ex.name);
   document.getElementById('set-display').textContent=`${s.currentSet}/${ex.sets}`;
   document.getElementById('reps-display').textContent=ex.reps;
@@ -936,15 +991,17 @@ function renderTrain(){
   document.getElementById('weight-input').value=ex.weight;
   document.getElementById('reps-input').value=ex.reps;
 
-  // a dolgoztatott izom satírozva emelődik ki, a többi elhalkul
-  const view = cat==='back' ? 'back' : 'front';
+  // a dolgoztatott izom satírozva emelődik ki, a többi elhalkul.
+  // Hátulnézet akkor, ha a célcsoportok többsége csak onnan látszik.
+  const BACK_ONLY=['lat','trap','rear_delt','triceps','glute','hamstring','lower_back'];
+  const view = gs.some(g=>BACK_ONLY.includes(g)) && !gs.some(g=>['chest','front_delt','abs','quad','biceps'].includes(g)) ? 'back' : 'front';
   const bodyBox=document.getElementById('body-diagram');
   if(bodyBox.dataset.view!==view){
     bodyBox.innerHTML=bodySvg(view,'muscle-part');
     bodyBox.dataset.view=view;
   }
   bodyBox.querySelectorAll('.muscle-part').forEach(el=>{
-    const on=el.dataset.muscle===cat;
+    const on=gs.includes(el.dataset.muscle);
     el.classList.toggle('active',on);
     el.classList.toggle('dim',!on);
   });
@@ -1321,7 +1378,7 @@ function finishSession(){
   s.completedSets.forEach(set=>{ muscleVol[set.muscle]=(muscleVol[set.muscle]||0)+set.weight*set.reps; });
   // A regeneráció a testtérkép régióira íródik (a tricepsz/bicepsz a "karra"),
   // különben a kar sosem frissült volna.
-  Object.keys(muscleVol).forEach(m=>{ state.muscleRecovery[muscleCategoryMap[m]||m]=Date.now(); });
+  Object.keys(muscleVol).forEach(m=>groupsOf(m).forEach(g=>{ state.muscleRecovery[g]=Date.now(); }));
 
   const xpGained=Math.floor(volume/100)+sets*5+50;
   grantXp(xpGained);
