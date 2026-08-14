@@ -2,8 +2,8 @@
    A CACHE verziószáma MINDIG egyezik az app.js APP_VERSION értékével.
    Új deploynál mindkettőt együtt kell léptetni, különben a telepített app
    a régi cache-ből szolgálja ki magát. */
-const CACHE = 'fitmates-v4';
-const FONT_CACHE = 'fitmates-fonts-v4';
+const CACHE = 'fitmates-v5';
+const FONT_CACHE = 'fitmates-fonts-v5';
 
 const SHELL = [
   './',

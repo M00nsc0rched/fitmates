@@ -3,12 +3,13 @@
    A verziószám EGYEZIK a sw.js CACHE nevében lévő számmal (fitmates-vN).
    ========================================================================== */
 'use strict';
-const APP_VERSION = 4;
+const APP_VERSION = 5;
 
 /* ---------------------------------------------------------------- ÁLLAPOT */
 const DEFAULT_STATE = {
   user:{level:1,xp:0,streak:0,lastWorkoutDate:null,totalXp:0,name:''},
   weeklyGoal:4,
+  todayFocus:null,                              // {date, id} — a mai terv kézi átírása
   goal:'build',
   muscleRecovery:{},                            // izomcsoport -> utolsó terhelés időpontja (migrateRecovery tölti)
   lastWeights:{},
@@ -218,134 +219,224 @@ function bodySvg(view, cls, style){
 }
 
 /* ---------------------------------------------------------------- ADATOK */
-const gymExercises = {
-  chest:[
-    {name:'Fekvenyomás rúddal',base:60,type:'compound'},
-    {name:'Ferde fekvenyomás súlyzóval',base:22,type:'compound'},
-    {name:'Gépes mellnyomás',base:30,type:'isolation'},
-    {name:'Kábeles keresztezés',base:15,type:'isolation'},
-    {name:'Pec deck (tárogató gép)',base:25,type:'isolation'}
-  ],
-  back:[
-    {name:'Evezés rúddal',base:50,type:'compound'},
-    {name:'Felső csigás lehúzás',base:45,type:'compound'},
-    {name:'Ülő kábeles evezés',base:50,type:'compound'},
-    {name:'Román felhúzás',base:60,type:'compound'},
-    {name:'Egykezes súlyzós evezés',base:25,type:'compound'}
-  ],
-  legs:[
-    {name:'Guggolás rúddal',base:60,type:'compound'},
-    {name:'Lábtolás gépen',base:100,type:'compound'},
-    {name:'Kitörés súlyzóval',base:20,type:'compound'},
-    {name:'Lábhajlítás gépen',base:30,type:'isolation'},
-    {name:'Vádliemelés gépen',base:60,type:'isolation'}
-  ],
-  shoulders:[
-    {name:'Katonai nyomás rúddal',base:30,type:'compound'},
-    {name:'Oldalemelés súlyzóval',base:8,type:'isolation'},
-    {name:'Arc-húzás kábellel',base:15,type:'isolation'},
-    {name:'Hátsó váll emelés',base:10,type:'isolation'}
-  ],
-  triceps:[
-    {name:'Tricepsz lenyomás kábellel',base:20,type:'isolation'},
-    {name:'Fej mögötti tricepsznyújtás',base:15,type:'isolation'},
-    {name:'Szűk fogású fekvenyomás',base:40,type:'compound'}
-  ],
-  biceps:[
-    {name:'Bicepsz hajlítás rúddal',base:20,type:'compound'},
-    {name:'Bicepsz hajlítás súlyzóval',base:10,type:'isolation'},
-    {name:'Kalapácshajlítás',base:12,type:'isolation'}
-  ],
-  core:[
-    {name:'Függeszkedő lábemelés',base:0,type:'bodyweight'},
-    {name:'Kábeles crunch',base:25,type:'isolation'},
-    {name:'Deszka (plank)',base:0,type:'bodyweight',isTime:true},
-    {name:'Orosz csavarás súlyzóval',base:5,type:'bodyweight'}
-  ]
-};
+/* ============================================================================
+   GYAKORLAT-ADATBÁZIS
+   A tier-rangok (S > A > B > C > D) a felhasználó referencia-anyagából jönnek;
+   a sorozat/ismétlés/pihenő a szöveges diákból: összetett mozgás 3×5-8 vagy
+   8-12, váll-izoláció 3×15-20, has/vádli/alkar 3×15-20, egyéb izoláció 3×10-15.
+   eq = eszköz: rud | sulyzo | gep | kabel | sajat | gumi
+   TIER_X = a referencián a "🤓" sávba került, a generátor nem választja.
+   ========================================================================== */
+const TIER_RANK = {S:0, A:1, B:2, C:3, D:4, X:9};
 
-const calisthenicsExercises = {
-  chest:[
-    {name:'Fekvőtámasz',base:0,type:'bodyweight'},
-    {name:'Tolódzkodás',base:0,type:'bodyweight'},
-    {name:'Planche',base:0,type:'skill',advanced:true},
-    {name:'Muscle-up',base:0,type:'skill',advanced:true}
-  ],
-  back:[
-    {name:'Húzódzkodás',base:0,type:'bodyweight'},
-    {name:'Fordított evezés',base:0,type:'bodyweight'},
-    {name:'Front lever',base:0,type:'skill',advanced:true},
-    {name:'Back lever',base:0,type:'skill',advanced:true}
-  ],
-  legs:[
-    {name:'Guggolás (saját súly)',base:0,type:'bodyweight'},
-    {name:'Kitörés (saját súly)',base:0,type:'bodyweight'},
-    {name:'Nordic lábhajlítás',base:0,type:'bodyweight'},
-    {name:'Pisztolyguggolás',base:0,type:'skill',advanced:true}
-  ],
-  shoulders:[
-    {name:'Kézállás fal mellett',base:0,type:'skill',advanced:true},
-    {name:'Csúcstartásos fekvőtámasz',base:0,type:'bodyweight'},
-    {name:'Kézállásos fekvőtámasz',base:0,type:'skill',advanced:true}
-  ],
-  triceps:[
-    {name:'Szűk fekvőtámasz',base:0,type:'bodyweight'},
-    {name:'Padon tolódzkodás',base:0,type:'bodyweight'}
-  ],
-  biceps:[
-    {name:'Alsó fogású húzódzkodás',base:0,type:'bodyweight'},
-    {name:'Vízszintes húzás (gyűrű)',base:0,type:'bodyweight'}
-  ],
-  core:[
-    {name:'Deszka (plank)',base:0,type:'bodyweight',isTime:true},
-    {name:'Függeszkedő lábemelés',base:0,type:'bodyweight'},
-    {name:'L-sit',base:0,type:'skill',advanced:true},
-    {name:'Dragon flag',base:0,type:'skill',advanced:true}
-  ]
-};
+// r: [ismétlés min,max] · p: pihenő mp · pri/sec: izomcsoportok
+function E(id,nev,eq,tier,pri,sec,r,p,tipp){
+  return {id,nev,eq,tier,pri,sec:sec||[],r,p,tipp:tipp||''};
+}
+const NAGY=[6,10],   RN=150;   // nagy összetett
+const KOZ=[8,12],    RK=120;   // közepes összetett
+const IZO=[10,15],   RI=75;    // izoláció
+const MAGAS=[15,20], RM=60;    // váll-izoláció, has, vádli, alkar
 
-const goals = {
-  build:{name:'Izomépítés',desc:'Edzőtermi · súlyokkal',icon:'dumbbell',sets:4,reps:10,rest:75,
-    split:{name:'Toló / Húzó / Láb',workouts:[
-      {day:'Hét',name:'Toló nap',muscles:['chest','shoulders','triceps']},
-      {day:'Ked',name:'Húzó nap',muscles:['back','biceps']},
-      {day:'Sze',name:'Láb nap',muscles:['legs','core']},
-      {day:'Csü',name:'Toló nap',muscles:['chest','shoulders','triceps']},
-      {day:'Pén',name:'Húzó nap',muscles:['back','biceps']},
-      {day:'Szo',name:'Láb nap',muscles:['legs','core']},
-      {day:'Vas',name:'Pihenő',muscles:[]}
-    ]}},
-  calisthenics:{name:'Calisthenics',desc:'Saját súly · funkcionális',icon:'weight',sets:4,reps:12,rest:90,
-    split:{name:'Felső / Alsó / Core',workouts:[
-      {day:'Hét',name:'Toló (saját)',muscles:['chest','shoulders','triceps']},
-      {day:'Ked',name:'Húzó (saját)',muscles:['back','biceps']},
-      {day:'Sze',name:'Láb (saját)',muscles:['legs']},
-      {day:'Csü',name:'Törzs & készség',muscles:['core','shoulders']},
-      {day:'Pén',name:'Teljes test',muscles:['chest','back','legs']},
-      {day:'Szo',name:'Mobilitás',muscles:['core']},
-      {day:'Vas',name:'Pihenő',muscles:[]}
-    ]}},
-  // A kardió-split korábban 'arms' izomkulcsot használt, amihez NINCS gyakorlat-
-  // készlet — az a nap üresen generálódott. Valódi kulcsokra cserélve.
-  cardio:{name:'Kardió',desc:'Állóképesség · 15-20 ism.',icon:'running',sets:3,reps:20,rest:45,
-    split:{name:'Körkörös edzés',workouts:[
-      {day:'Hét',name:'Felső kör',muscles:['chest','back','shoulders']},
-      {day:'Ked',name:'Alsó kör',muscles:['legs']},
-      {day:'Sze',name:'Törzs & kondi',muscles:['core']},
-      {day:'Csü',name:'Pihenő',muscles:[]},
-      {day:'Pén',name:'Teljes test kör',muscles:['chest','back','legs']},
-      {day:'Szo',name:'Hosszú kör',muscles:['legs','core','shoulders']},
-      {day:'Vas',name:'Pihenő',muscles:[]}
-    ]}},
-  rest:{name:'Pihenőhét',desc:'Aktív regeneráció',icon:'bed',sets:0,reps:0,rest:0,
-    split:{name:'Pihenőhét',workouts:[
-      {day:'Hét',name:'Pihenő',muscles:[]},{day:'Ked',name:'Pihenő',muscles:[]},
-      {day:'Sze',name:'Pihenő',muscles:[]},{day:'Csü',name:'Pihenő',muscles:[]},
-      {day:'Pén',name:'Pihenő',muscles:[]},{day:'Szo',name:'Pihenő',muscles:[]},
-      {day:'Vas',name:'Pihenő',muscles:[]}
-    ]}}
-};
+const EXERCISES = [
+  /* ---------------- MELL ---------------- */
+  E('mell-fekvenyomas-rud','Fekvenyomás rúddal','rud','S',['chest'],['front_delt','triceps'],NAGY,RN,'Lapockát húzd össze és rögzítsd, a rúd a mellbimbó vonalára ér.'),
+  E('mell-ferde-sulyzo','Ferde súlyzós nyomás','sulyzo','S',['chest'],['front_delt','triceps'],KOZ,RK,'30-45 fokos dőlés; mélyre engedd a súlyzókat.'),
+  E('mell-ferde-rud','Ferde fekvenyomás rúddal','rud','S',['chest'],['front_delt','triceps'],NAGY,RN,'Ne állítsd meredekebbre 45 foknál, mert a váll veszi át.'),
+  E('mell-tolodzkodas','Tolódzkodás (mellre)','sajat','S',['chest'],['triceps','front_delt'],KOZ,RK,'Enyhén dőlj előre, a könyök szélesebbre nyílhat.'),
+  E('mell-labemelt-fekvotamasz','Lábemelt fekvőtámasz','sajat','A',['chest'],['triceps','abs'],KOZ,RK,'Feszes törzs; a láb magasabbra tétele a felső mellet célozza.'),
+  E('mell-gyurus-fekvotamasz','Gyűrűs fekvőtámasz','sajat','A',['chest'],['triceps','front_delt'],KOZ,RK,'A gyűrű instabil — lassan, kontrollal.'),
+  E('mell-kabel-keresztezes','Kábeles keresztezés','kabel','A',['chest'],[],IZO,RI,'A csúcsponton szorítsd össze a mellizmot.'),
+  E('mell-fekvo-sulyzo','Fekvenyomás kézisúlyzóval','sulyzo','A',['chest'],['front_delt','triceps'],KOZ,RK,'Nagyobb mozgástartomány, de ne told túl a vállízületet.'),
+  E('mell-gepes-nyomas','Gépes mellnyomás','gep','C',['chest'],['triceps'],IZO,RI,'A fogantyú mellmagasságban legyen.'),
+  E('mell-tarogatas','Tárogatás kézisúlyzóval','sulyzo','C',['chest'],[],IZO,RI,'Enyhén hajlított könyök, a mozgás a vállízületből induljon.'),
+  E('mell-pec-deck','Pec deck (gépes tárogatás)','gep','C',['chest'],[],IZO,RI,'Lassan hozd össze a karokat, érezd az összehúzódást.'),
+  E('mell-gumi-nyomas','Gumiszalagos mellnyomás','gumi','C',['chest'],['triceps','front_delt'],IZO,RI,'A szalagot a hátad mögött rögzítsd stabil ponthoz.'),
 
+  /* ---------------- HÁT (lat + trapéz) ---------------- */
+  E('hat-huzodzkodas','Húzódzkodás','sajat','S',['lat'],['biceps','forearm'],KOZ,RK,'A lapockák lehúzásával indítsd, ne csak a karból húzz.'),
+  E('hat-evezes-also-fogas','Evezés rúddal (alsó fogás)','rud','S',['lat'],['biceps','trap','lower_back'],NAGY,RN,'Alsó fogás; a rudat a hasadhoz húzd, könyököt hátra.'),
+  E('hat-evezes-rud','Evezés rúddal','rud','S',['lat','trap'],['biceps','lower_back'],NAGY,RN,'Tartsd közel vízszinteshez a törzset.'),
+  E('hat-mellel-tamasztott-evezes','Mellel támasztott evezés','sulyzo','S',['lat','trap'],['biceps'],KOZ,RK,'A ferde pad kiveszi a derekat — csak a hát dolgozik.'),
+  E('hat-egykezes-evezes-padon','Egykezes evezés padon','sulyzo','S',['lat'],['biceps','trap'],KOZ,RK,'Padra támaszkodva, a súlyzót a csípőd felé húzd.'),
+  E('hat-lat-lehuzas','Felső csigás lehúzás','gep','A',['lat'],['biceps','forearm'],KOZ,RK,'A felső mell elé húzd, ne a tarkó mögé.'),
+  E('hat-ulo-kabel-evezes','Ülő kábeles evezés','kabel','A',['lat','trap'],['biceps'],KOZ,RK,'Egyenes háttal húzz, a lapockát vidd hátra és le.'),
+  E('hat-trapbar-felhuzas','Fogantyús (trap bar) felhúzás','rud','A',['lat','trap'],['glute','hamstring','forearm'],NAGY,RN,'Semleges fogás, egyenes hát; a lábbal indíts.'),
+  E('hat-egykezes-kabel-evezes','Egykezes kábeles evezés','kabel','B',['lat'],['biceps'],IZO,RI,'A törzs maradjon stabil, ne csavarodj bele.'),
+  E('hat-gepes-lehuzas','Gépes lehúzás','gep','B',['lat'],['biceps'],KOZ,RK,'Rögzített pálya — jó a technika tanulásához.'),
+  E('hat-forditott-evezes','Fordított evezés','sajat','C',['lat','trap'],['biceps'],KOZ,RK,'Feszes farizom és has, a test deszkaszerűen egyenes.'),
+  E('hat-kabel-pullover','Kábeles pullover','kabel','D',['lat'],[],IZO,RI,'Enyhén hajlított kar, a hátból húzz, ne a karból.'),
+  E('trap-rudvonas','Vállvonás (shrug) rúddal','rud','B',['trap'],['forearm'],IZO,RI,'Csak fel-le; ne körözz a vállal.'),
+  E('trap-sulyzo-vonas','Vállvonás kézisúlyzóval','sulyzo','B',['trap'],['forearm'],IZO,RI,'Fent tarts egy pillanatot.'),
+
+  /* ---------------- VÁLL ---------------- */
+  E('vall-rudas-nyomas','Fej fölötti nyomás rúddal','rud','S',['front_delt'],['side_delt','triceps','abs'],NAGY,RN,'Feszes farizom és has, hogy a derék ne hajoljon hátra.'),
+  E('vall-kabel-oldalemeles','Kábeles oldalemelés','kabel','S',['side_delt'],[],MAGAS,RM,'A kábel a teljes tartományban terhel — könnyű súly, magas ismétlés.'),
+  E('vall-egykezes-kabel-oldalemeles','Egykezes kábeles oldalemelés','kabel','S',['side_delt'],[],MAGAS,RM,'A test mögül indítsd, így nagyobb a mozgástartomány.'),
+  E('vall-kezallasos-fekvotamasz','Kézállásos fekvőtámasz','sajat','S',['front_delt'],['side_delt','triceps'],KOZ,RK,'Fal mellett kezdd; feszes törzzsel dolgozz.'),
+  E('vall-face-pull','Face pull kábellel','kabel','S',['rear_delt'],['trap'],MAGAS,RM,'Az arcod felé húzz magasan tartott könyökkel.'),
+  E('vall-sulyzos-nyomas','Vállnyomás kézisúlyzóval','sulyzo','A',['front_delt'],['side_delt','triceps'],KOZ,RK,'Ne üsd össze fent a súlyzókat.'),
+  E('vall-sulyzos-oldalemeles','Oldalemelés kézisúlyzóval','sulyzo','A',['side_delt'],[],MAGAS,RM,'Vállmagasságig, enyhén hajlított könyökkel, lendítés nélkül.'),
+  E('vall-hatso-tarogatas-padon','Hátsó váll tárogatás padon','sulyzo','A',['rear_delt'],['trap'],MAGAS,RM,'Ferde padra fekve, enyhén hajlított karral emelj oldalra.'),
+  E('vall-kabel-hatso-vall','Kábeles hátsó váll tárogatás','kabel','A',['rear_delt'],['trap'],MAGAS,RM,'Kereszt-fogással, a végponton szorítsd össze a lapockát.'),
+  E('vall-landmine-nyomas','Rudas (landmine) nyomás','rud','A',['front_delt'],['triceps','chest'],KOZ,RK,'Ferde pálya — kíméletesebb a vállnak.'),
+  E('vall-gepes-nyomas','Gépes vállnyomás','gep','A',['front_delt'],['triceps'],KOZ,RK,'Az ülést állítsd úgy, hogy a fogantyú vállmagasságban legyen.'),
+  E('vall-elorediolt-hatso-vall','Előredőlt hátsó váll tárogatás','sulyzo','B',['rear_delt'],['trap'],MAGAS,RM,'Előredőlve, a lapockákat szorítsd össze.'),
+  E('vall-rudas-elulso-emeles','Elülső emelés rúddal','rud','B',['front_delt'],[],IZO,RI,'Az elülső vállat a nyomások már lefedik — ez csak ráadás.'),
+  E('vall-egykezes-oldalemeles','Egykezes oldalemelés','sulyzo','C',['side_delt'],[],MAGAS,RM,'Kapaszkodj meg, hogy ne lendíts a törzzsel.'),
+  E('vall-pike-fekvotamasz','Pike fekvőtámasz','sajat','D',['front_delt'],['triceps'],KOZ,RK,'Csípőt magasra, a fejtetőt a talaj felé engedd.'),
+  E('vall-gumi-oldalemeles','Gumiszalagos oldalemelés','gumi','C',['side_delt'],[],MAGAS,RM,'Lassan, rángatás nélkül vállmagasságig.'),
+
+  /* ---------------- BICEPSZ ---------------- */
+  E('bi-rudas-hajlitas','Bicepsz hajlítás rúddal','rud','S',['biceps'],['forearm'],IZO,RI,'Rögzítsd a könyököd a törzs mellett, ne lendíts a derékkal.'),
+  E('bi-ez-rud-hajlitas','EZ-rudas hajlítás','rud','S',['biceps'],['forearm'],IZO,RI,'Csuklóbarát fogás — ugyanaz a munka, kevesebb csuklófájás.'),
+  E('bi-kabeles-hajlitas','Kábeles bicepsz hajlítás','kabel','S',['biceps'],[],IZO,RI,'A kábel alul is terhel, ahol a súlyzó már nem.'),
+  E('bi-predikaloszek','Prédikálószék hajlítás','rud','S',['biceps'],[],IZO,RI,'A felkar teljesen feküdjön a párnán, ne emeld el.'),
+  E('bi-gepes-predikalo','Gépes prédikálószék','gep','S',['biceps'],[],IZO,RI,'Rögzített pálya, könnyű a technikát eltalálni.'),
+  E('bi-dontott-rudas-hajlitas','Döntött rudas hajlítás','rud','S',['biceps'],[],IZO,RI,'Hátradöntött padon a bicepsz megnyújtott helyzetből dolgozik.'),
+  E('bi-allo-sulyzos','Bicepsz hajlítás kézisúlyzóval','sulyzo','A',['biceps'],['forearm'],IZO,RI,'A végén fordítsd kifelé a tenyered.'),
+  E('bi-ferde-ulo-sulyzos','Ferde padon ülő súlyzós hajlítás','sulyzo','A',['biceps'],[],IZO,RI,'A kar a törzs mögé kerül — megnyújtott bicepsz.'),
+  E('bi-szeles-fogasu','Széles fogású rudas hajlítás','rud','A',['biceps'],['forearm'],IZO,RI,'Szélesebb fogás a rövid fejet célozza.'),
+  E('bi-koncentracios','Koncentrációs hajlítás','sulyzo','A',['biceps'],[],IZO,RI,'Támaszd a könyököd a comb belső oldalára.'),
+  E('bi-egykezes-kabeles','Egykezes kábeles hajlítás','kabel','A',['biceps'],[],IZO,RI,'Egyenletes terhelés, jól izolál.'),
+  E('bi-kalapacshajlitas','Kalapácshajlítás','sulyzo','B',['biceps'],['forearm'],IZO,RI,'Semleges fogás — a karizmot és az alkart is terheli.'),
+  E('bi-huzodzkodas-also','Alsó fogású húzódzkodás','sajat','A',['biceps'],['lat','forearm'],KOZ,RK,'Alsó fogás, az állad a rúd fölé.'),
+  E('bi-lenditeses','Lendítéses rudas hajlítás','rud','D',['biceps'],['lower_back'],IZO,RI,'Csak a legvégén, ha már nem megy tisztán.'),
+
+  /* ---------------- TRICEPSZ ---------------- */
+  E('tri-kabel-lenyomas-doles','Kábeles lenyomás előredőlve','kabel','S',['triceps'],[],IZO,RI,'Az előredőlés megnyújtja a hosszú fejet — ez a lényeg.'),
+  E('tri-kabel-kickback','Kábeles kickback','kabel','S',['triceps'],[],IZO,RI,'Rögzített felkar, csak a könyök nyílik.'),
+  E('tri-kabel-fej-mogotti','Fej mögötti kábelnyújtás','kabel','S',['triceps'],[],IZO,RI,'A kar a fej mögé kerül: a hosszú fej megnyújtva dolgozik.'),
+  E('tri-kabel-egykezes-fej-mogotti','Egykezes fej mögötti kábelnyújtás','kabel','S',['triceps'],[],IZO,RI,'Egy oldalt terhelve könnyebb a teljes tartományt bejárni.'),
+  E('tri-sulyzo-fej-mogotti','Fej mögötti súlyzónyújtás ferde padon','sulyzo','A',['triceps'],[],IZO,RI,'A felkar függőlegesen a fül mellett marad.'),
+  E('tri-francia-nyomas','Francia nyomás (skull crusher)','rud','A',['triceps'],[],IZO,RI,'A rudat a homlok fölé engedd, a felkar ne mozduljon.'),
+  E('tri-fekvo-sulyzo-nyujtas','Fekvő súlyzós tricepsznyújtás','sulyzo','A',['triceps'],[],IZO,RI,'Enyhén hátra döntött felkar a nagyobb nyújtásért.'),
+  E('tri-szuk-fekvenyomas','Szűk fogású fekvenyomás','rud','B',['triceps'],['chest','front_delt'],KOZ,RK,'Vállszélességű fogás, könyök közel a testhez.'),
+  E('tri-gyemant-fekvotamasz','Gyémánt fekvőtámasz','sajat','B',['triceps'],['chest'],KOZ,RK,'A tenyerek gyémánt alakban a mellkas alatt.'),
+  E('tri-egykezes-sulyzo','Egykezes fej mögötti súlyzónyújtás','sulyzo','B',['triceps'],[],IZO,RI,'A felkar a fül mellett, csak a könyök nyílik.'),
+  E('tri-pad-tolodzkodas','Padon tolódzkodás','sajat','B',['triceps'],['front_delt','chest'],KOZ,RK,'A test közel a padhoz, a könyök hátra hajlik.'),
+  E('tri-kabel-lenyomas','Kábeles lenyomás','kabel','C',['triceps'],[],IZO,RI,'Könyök a törzs mellett, csak lefelé nyújts.'),
+  E('tri-sulyzo-kickback','Súlyzós kickback','sulyzo','D',['triceps'],[],IZO,RI,'A csúcson a legkisebb a terhelés — ezért gyengébb választás.'),
+  E('tri-gumi-lenyomas','Gumiszalagos lenyomás','gumi','C',['triceps'],[],IZO,RI,'Nyújtsd teljesen a kart a szalag ellenében.'),
+
+  /* ---------------- ALKAR / SZORÍTÓERŐ ---------------- */
+  E('fore-csuklohajlitas','Csuklóhajlítás rúddal','rud','S',['forearm'],[],MAGAS,RM,'Az alkart támaszd a combra vagy padra, csak a csukló mozog.'),
+  E('fore-csukloroller','Csuklóroller','gep','S',['forearm'],[],MAGAS,RM,'Fel és le is tekerd — mindkét irány számít.'),
+  E('fore-forditott-hajlitas','Fordított fogású hajlítás','rud','S',['forearm'],['biceps'],IZO,RI,'Felülről fogd a rudat; ez az alkar felső részét építi.'),
+  E('fore-szoritoeszkoz','Kézi szorítóeszköz','gep','A',['forearm'],[],MAGAS,RM,'Teljes zárás, lassú nyitás.'),
+  E('fore-fuggeszkedes','Függeszkedés (dead hang)','sajat','A',['forearm'],['lat'],[30,60],RM,'Időre mérd: 30-60 másodperc.'),
+  E('fore-forditott-csuklohajlitas','Fordított csuklóhajlítás','sulyzo','B',['forearm'],[],MAGAS,RM,'Felfelé néző kézháttal emelj.'),
+  E('fore-farmerjaras','Farmerjárás','sulyzo','B',['forearm'],['trap','abs'],[30,60],RM,'Vállat le és hátra, feszes has, kis lépések.'),
+  E('fore-statikus-rudtartas','Statikus rúdtartás','rud','C',['forearm'],[],[20,40],RM,'Nehéz rúd, csak tartás — időre.'),
+
+  /* ---------------- HASFAL / FERDE HASIZOM ---------------- */
+  E('abs-dontott-felules','Döntött padon felülés súllyal','gep','S',['abs'],['oblique'],MAGAS,RM,'A súlyt a mellkason tartsd, göngyölítve emelkedj.'),
+  E('abs-gepes-crunch','Gépes crunch','gep','S',['abs'],[],MAGAS,RM,'A hasból göngyölíts, ne a karral húzz.'),
+  E('abs-kabel-crunch','Kábeles crunch (térdelve)','kabel','S',['abs'],[],MAGAS,RM,'Fix csípő, a felsőtestet göngyölítsd le.'),
+  E('abs-fuggo-labemeles','Függeszkedő lábemelés','sajat','S',['abs'],['oblique','forearm'],MAGAS,RM,'Lendület nélkül, a medencét döntsd hátra.'),
+  E('obl-kabel-rotacio','Kábeles rotáció','kabel','S',['oblique'],['abs'],MAGAS,RM,'A csípőből fordulj, a kar csak követ.'),
+  E('abs-sulyozott-felules','Súlyozott felülés','sajat','A',['abs'],['oblique'],MAGAS,RM,'A nyakad ne rántsd, a hasizom emeljen.'),
+  E('abs-hasgorgo','Hasgörgő (ab wheel)','sajat','A',['abs'],['lower_back'],IZO,RI,'Feszes has és farizom, ne horpadjon be a derék.'),
+  E('abs-dontott-labemeles','Döntött lábemelés','sajat','A',['abs'],[],MAGAS,RM,'Kontrolláltan engedd vissza, ne csapd le a lábat.'),
+  E('abs-gepes-labemeles','Gépes lábemelés','gep','A',['abs'],[],MAGAS,RM,'A háttámlához szorítva a derék védve van.'),
+  E('obl-orosz-csavaras','Orosz csavarás labdával','sajat','A',['oblique'],['abs'],MAGAS,RM,'Egyenes háttal, kontrolláltan forgasd a törzset.'),
+  E('abs-plank','Deszka (plank)','sajat','C',['abs'],['lower_back'],[30,60],RM,'Egyenes vonal fej-csípő-sarok, feszítsd a fart és hasat.'),
+  E('obl-oldalplank','Oldalplank','sajat','D',['oblique'],['abs'],[30,60],RM,'Csípőt magasan, a test egy vonalban.'),
+  E('obl-oldalra-doles','Oldalra dőlés súlyzóval','sulyzo','D',['oblique'],[],MAGAS,RM,'Csak oldalra, ne csavarodj.'),
+
+  /* ---------------- COMB (elülső) ---------------- */
+  E('quad-labtolas','Lábtolás gépen (45°)','gep','S',['quad'],['glute','hamstring'],KOZ,RK,'Ne nyújtsd ütközésig a térdet, a térd a lábfej vonalában.'),
+  E('quad-labnyujtas','Lábnyújtás gépen','gep','S',['quad'],[],IZO,RI,'A csúcson feszítsd meg egy pillanatra.'),
+  E('quad-goblet-guggolas','Goblet guggolás','sulyzo','S',['quad'],['glute'],KOZ,RK,'A súlyt a mellkas előtt tartsd, üljön mélyre a csípő.'),
+  E('quad-hatso-guggolas','Guggolás rúddal (hátsó)','rud','A',['quad'],['glute','lower_back','hamstring'],NAGY,RN,'Törd meg egyszerre a csípőt és a térdet, ülj mélyre.'),
+  E('quad-elso-guggolas','Első guggolás rúddal','rud','A',['quad'],['glute','abs'],NAGY,RN,'Magas könyök, kitolt mellkas, egyenes törzs.'),
+  E('quad-hack-squat','Hack squat','gep','A',['quad'],['glute'],KOZ,RK,'Rögzített pálya, mélyre lehet menni biztonságosan.'),
+  E('quad-bolgar-kitores','Bolgár kitörés','sulyzo','A',['quad'],['glute','hamstring'],KOZ,RK,'Hátsó láb a padon, függőlegesen ereszkedj.'),
+  E('quad-smith-guggolas','Smith-gépes guggolás','gep','A',['quad'],['glute'],KOZ,RK,'A láb előrébb tehető, így a comb jobban dolgozik.'),
+  E('quad-sulyzos-guggolas','Súlyzós guggolás','sulyzo','B',['quad'],['glute'],KOZ,RK,'Két súlyzó a test mellett, egyenes hát.'),
+  E('quad-kitores','Kitörés','sulyzo','B',['quad'],['glute','hamstring'],KOZ,RK,'Nagy lépés, a hátsó térd a talaj felé.'),
+  E('quad-testsuly-guggolas','Testsúlyos guggolás','sajat','C',['quad'],['glute'],MAGAS,RM,'Térd a lábujj irányába, sarok a talajon.'),
+  E('quad-pisztolyguggolas','Pisztolyguggolás','sajat','D',['quad'],['glute'],IZO,RI,'Egy lábon — előbb kapaszkodva gyakorold.'),
+
+  /* ---------------- COMB (hátsó) + FARIZOM ---------------- */
+  E('ham-roman-felhuzas','Román felhúzás rúddal (RDL)','rud','S',['hamstring'],['glute','lower_back'],NAGY,RN,'Told hátra a csípőt egyenes háttal, a rúd a lábhoz közel.'),
+  E('ham-ulo-labhajlitas','Ülő lábhajlítás gépen','gep','S',['hamstring'],[],IZO,RI,'Ülve a combhajlító megnyújtva dolgozik — ezért erős választás.'),
+  E('ham-fekvo-labhajlitas','Fekvő lábhajlítás gépen','gep','S',['hamstring'],[],IZO,RI,'Lendület nélkül, a végponton szorítsd össze.'),
+  E('glute-csipoemeles','Csípőemelés rúddal (hip thrust)','rud','S',['glute'],['hamstring'],KOZ,RK,'Fent teljesen feszítsd a farizmot, a borda ne szaladjon fel.'),
+  E('ham-nyujtott-labu-felhuzas','Nyújtott lábú felhúzás','rud','A',['hamstring'],['glute','lower_back'],NAGY,RN,'Közel egyenes láb, csípőből dőlj előre.'),
+  E('ham-egylabas-rdl','Egylábas román felhúzás','sulyzo','A',['hamstring'],['glute'],IZO,RI,'Egyensúly is fejlődik; a csípő ne billenjen oldalra.'),
+  E('ham-nordic','Nordic lábhajlítás','sajat','A',['hamstring'],[],IZO,RI,'Rögzített boka, a lehető leglassabban engedd le a törzset.'),
+  E('ham-glute-ham-raise','Glute-ham raise','gep','A',['hamstring'],['glute','lower_back'],IZO,RI,'A combhajlító fékez — kis tartományból kezdd.'),
+  E('ham-jo-reggelt','Jó reggelt gyakorlat','rud','B',['hamstring'],['lower_back','glute'],IZO,RI,'Enyhén hajlított térd, csípőből dőlj, egyenes hát.'),
+  E('glute-kabel-rugas','Kábeles farizom-rúgás','kabel','B',['glute'],[],IZO,RI,'Egyenes háttal rúgd hátra, a végponton szorítsd.'),
+  E('glute-hid','Farizom híd','sajat','C',['glute'],['hamstring'],MAGAS,RM,'Nyomj a sarkadon keresztül, fent szorítsd össze.'),
+  E('glute-fellepes','Egylábas fellépés','sulyzo','D',['glute'],['quad','hamstring'],IZO,RI,'Lassan, ne lökd fel magad a hátsó lábbal.'),
+  E('glute-gumi-oldalseta','Gumiszalagos oldalséta','gumi','C',['glute'],[],MAGAS,RM,'Szalag a térd felett, félguggolásban lépkedj.'),
+
+  /* ---------------- DERÉKTÁJÉK ---------------- */
+  E('lb-hathajlitas','Hiperextenzió (háthajlítás)','gep','C',['lower_back'],['glute','hamstring'],IZO,RI,'Csak egyenes vonalig emelkedj, ne told túl hátra.'),
+  E('lb-superman','Superman','sajat','C',['lower_back'],['glute'],MAGAS,RM,'Egyszerre emeld a kart és a lábat, tartsd meg.'),
+  E('lb-madar-kutya','Madár-kutya','sajat','B',['lower_back'],['abs','glute'],MAGAS,RM,'Ellentétes kar és láb; a csípő ne billenjen.'),
+
+  /* ---------------- VÁDLI ---------------- */
+  E('vadli-allo-emeles','Álló vádliemelés','gep','S',['calf'],[],MAGAS,RM,'A lehető legmagasabbra, majd lassan mélyre engedd a sarkat.'),
+  E('vadli-ulo-emeles','Ülő vádliemelés gépen','gep','S',['calf'],[],MAGAS,RM,'Hajlított térd — a lapos vádliizmot célozza.'),
+  E('vadli-egylabas','Egylábas vádliemelés','sulyzo','A',['calf'],[],MAGAS,RM,'Lépcső szélén, nagy mozgástartománnyal.'),
+  E('vadli-testsuly','Testsúlyos vádliemelés','sajat','B',['calf'],[],MAGAS,RM,'Lépcső szélén a sarkat mélyre engedd.')
+];
+
+/* ---- gyakorlat-segédek ---- */
+const EX_BY_ID = {};
+EXERCISES.forEach(e=>EX_BY_ID[e.id]=e);
+function exById(id){ return EX_BY_ID[id]; }
+// egy izomcsoportra elérhető gyakorlatok, tier szerint rendezve
+function exercisesFor(group, eqSet){
+  return EXERCISES
+    .filter(e=>e.pri.includes(group) && (!eqSet || eqSet.has(e.eq)) && e.tier!=='X')
+    .sort((a,b)=>TIER_RANK[a.tier]-TIER_RANK[b.tier]);
+}
+
+/* ============================================================================
+   MAI TERV — előre beállított fókuszok
+   A felhasználó a Mai edzés kártyán átírhatja, mi legyen ma.
+   ========================================================================== */
+const FOCUS_PRESETS = [
+  {id:'teljes',    nev:'Teljes test',    groups:['chest','lat','front_delt','side_delt','quad','hamstring','abs']},
+  {id:'felsotest', nev:'Felsőtest',      groups:['chest','lat','front_delt','side_delt','rear_delt','biceps','triceps']},
+  {id:'alsotest',  nev:'Alsótest',       groups:['quad','hamstring','glute','calf']},
+  {id:'tolo',      nev:'Toló nap',       groups:['chest','front_delt','side_delt','triceps']},
+  {id:'huzo',      nev:'Húzó nap',       groups:['lat','trap','rear_delt','biceps']},
+  {id:'lab',       nev:'Láb nap',        groups:['quad','hamstring','glute','calf']},
+  {id:'mell',      nev:'Mell',           groups:['chest']},
+  {id:'hat',       nev:'Hát',            groups:['lat','trap']},
+  {id:'vall',      nev:'Váll',           groups:['front_delt','side_delt','rear_delt']},
+  {id:'bicepsz',   nev:'Bicepsz',        groups:['biceps']},
+  {id:'tricepsz',  nev:'Tricepsz',       groups:['triceps']},
+  {id:'kar',       nev:'Kar (bi + tri)', groups:['biceps','triceps','forearm']},
+  {id:'has',       nev:'Has',            groups:['abs','oblique']},
+  {id:'comb',      nev:'Comb (elülső)',  groups:['quad']},
+  {id:'combhajl',  nev:'Comb (hátsó)',   groups:['hamstring']},
+  {id:'far',       nev:'Farizom',        groups:['glute']},
+  {id:'vadli',     nev:'Vádli',          groups:['calf']},
+  {id:'alkar',     nev:'Alkar / fogás',  groups:['forearm']},
+  {id:'derek',     nev:'Deréktájék',     groups:['lower_back']},
+  {id:'piheno',    nev:'Pihenőnap',      groups:[]}
+];
+const focusById = id => FOCUS_PRESETS.find(f=>f.id===id);
+
+// heti alapbeosztás célonként (ezt írja felül a mai fókusz, ha van)
+const WEEK_PLANS = {
+  build:{nev:'Toló / Húzó / Láb', days:['tolo','huzo','lab','tolo','huzo','lab','piheno']},
+  calisthenics:{nev:'Saját súly', days:['tolo','huzo','alsotest','has','teljes','piheno','piheno']},
+  cardio:{nev:'Körkörös', days:['felsotest','alsotest','has','piheno','teljes','teljes','piheno']},
+  rest:{nev:'Pihenőhét', days:['piheno','piheno','piheno','piheno','piheno','piheno','piheno']}
+};
+const GOAL_INFO = {
+  build:{nev:'Izomépítés',desc:'Edzőtermi · súlyokkal',icon:'dumbbell',eq:['rud','sulyzo','gep','kabel','sajat','gumi']},
+  calisthenics:{nev:'Calisthenics',desc:'Saját súly · funkcionális',icon:'weight',eq:['sajat']},
+  cardio:{nev:'Kardió',desc:'Állóképesség · magas ism.',icon:'running',eq:['sulyzo','gep','kabel','sajat','gumi']},
+  rest:{nev:'Pihenőhét',desc:'Aktív regeneráció',icon:'bed',eq:['sajat']}
+};
 /* A gyakorlatok (még) durva izomkulcsokat használnak, a testábra viszont 16
    finom csoportot. Ez a híd köti össze a kettőt: egy gyakorlat izomkulcsa
    megadja, MELY finom csoportok világítanak és melyek regenerálódnak. */
@@ -393,12 +484,29 @@ const titles = [
 function xpForLevel(lvl){ return 500 + (lvl-1)*250; }
 function getTitle(level){ let t=titles[0]; for(const x of titles) if(level>=x.level) t=x; return t.name; }
 function getDayOfWeek(){ return ['Vas','Hét','Ked','Sze','Csü','Pén','Szo'][new Date().getDay()]; }
-function getExercisePool(){ return state.goal==='calisthenics' ? calisthenicsExercises : gymExercises; }
-function getTodayWorkout(){
-  const goal = goals[state.goal];
-  if(!goal) return null;
-  const today = getDayOfWeek();
-  return goal.split.workouts.find(w=>w.day===today) || goal.split.workouts[0];
+const goalInfo = () => GOAL_INFO[state.goal] || GOAL_INFO.build;
+const eqSet = () => new Set(goalInfo().eq);
+
+/* A mai fókusz: ha a felhasználó átírta a Mai edzés kártyán, az ÜT; egyébként a
+   cél heti alapbeosztásából jön a nap. A kézi választás csak MÁRA érvényes. */
+function todayFocus(){
+  const t=new Date().toDateString();
+  if(state.todayFocus && state.todayFocus.date===t){
+    const f=focusById(state.todayFocus.id);
+    if(f) return f;
+  }
+  const plan=WEEK_PLANS[state.goal]||WEEK_PLANS.build;
+  const dayIdx=(new Date().getDay()+6)%7;           // hétfő = 0
+  return focusById(plan.days[dayIdx]) || focusById('piheno');
+}
+function setTodayFocus(id){
+  state.todayFocus={date:new Date().toDateString(), id};
+  saveState(); hideModal(); renderPlan();
+  showToast(`Mai terv: ${focusById(id).nev}`);
+}
+function clearTodayFocus(){
+  state.todayFocus=null; saveState(); hideModal(); renderPlan();
+  showToast('Vissza a heti beosztásra');
 }
 function formatDate(){
   const months=['Jan','Feb','Már','Ápr','Máj','Jún','Júl','Aug','Szep','Okt','Nov','Dec'];
@@ -486,25 +594,48 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState==='visible' && state.activeSession && state.activeSession.started && !state.activeSession.finished) requestWakeLock();
 });
 
-/* ---------------------------------------------------------------- TERV */
+/* ---------------------------------------------------------------- TERV
+   A generátor a legjobb rangú (S -> A -> B ...) gyakorlatot választja minden
+   célcsoportra, az elérhető eszközökből. Kevés csoportnál (pl. csak bicepsz)
+   több gyakorlat jut egy csoportra, sok csoportnál egy-egy. */
+function kezdoSuly(e){
+  if(state.lastWeights[e.id]!==undefined) return state.lastWeights[e.id];
+  if(state.lastWeights[e.nev]!==undefined) return state.lastWeights[e.nev]; // régi mentés névvel
+  if(e.eq==='sajat') return 0;
+  const nagy=e.pri.some(g=>['quad','hamstring','glute','chest','lat'].includes(g));
+  if(e.eq==='rud')  return nagy?40:20;
+  if(e.eq==='gep')  return nagy?40:20;
+  if(e.eq==='kabel')return 15;
+  if(e.eq==='gumi') return 0;
+  return nagy?16:8;                                     // kézisúlyzó
+}
 function generateTodayWorkout(){
-  const today=getTodayWorkout();
-  if(!today || today.muscles.length===0) return null;
-  const goal=goals[state.goal];
-  const pool=getExercisePool();
-  const exerciseList=[];
-  today.muscles.forEach((muscle,mi)=>{
-    const exs=pool[muscle]||[];
-    // az első (elsődleges) izomcsoport 2 gyakorlatot kap, a többi 1-1-et
-    const numEx = mi===0 ? 2 : 1;
-    for(let i=0;i<numEx && i<exs.length;i++){
-      const ex=exs[i];
-      const lastW = state.lastWeights[ex.name]!==undefined ? state.lastWeights[ex.name] : ex.base;
-      exerciseList.push({...ex,muscle,sets:goal.sets,reps:goal.reps,rest:goal.rest,weight:lastW,isCustom:false});
+  const focus=todayFocus();
+  if(!focus || focus.groups.length===0) return null;
+  const eq=eqSet();
+  /* Körkörös válogatás: ELŐSZÖR minden célcsoport kap egy gyakorlatot (a
+     legjobb rangút), és csak utána jön a második kör. Így kevés csoportnál
+     mélyebb, soknál szélesebb az edzés — de legfeljebb 6 gyakorlat, mert
+     3 sorozat/gyakorlat mellett ennél több már túl hosszú alkalom. */
+  const MAX_EX=6, MAX_PER_GROUP=4;
+  const chosen=[], usedIds=new Set();
+  const lists={}; focus.groups.forEach(g=>lists[g]=exercisesFor(g,eq));
+  for(let round=0; round<MAX_PER_GROUP && chosen.length<MAX_EX; round++){
+    for(const g of focus.groups){
+      if(chosen.length>=MAX_EX) break;
+      const e=(lists[g]||[]).find(x=>!usedIds.has(x.id));
+      if(!e) continue;
+      usedIds.add(e.id);
+      // a kardió cél magasabb ismétlést és rövidebb pihenőt kér
+      const r = state.goal==='cardio' ? [Math.round(e.r[0]*1.6),Math.round(e.r[1]*1.6)] : e.r;
+      const p = state.goal==='cardio' ? Math.max(30,Math.round(e.p*0.6)) : e.p;
+      chosen.push({id:e.id, name:e.nev, groups:e.pri.slice(), sec:e.sec.slice(), eq:e.eq,
+        tier:e.tier, tipp:e.tipp, sets:3, reps:r[1], repMin:r[0], repMax:r[1],
+        rest:p, weight:kezdoSuly(e), isCustom:false});
     }
-  });
-  state.customTodayExercises.forEach(c=>exerciseList.push({...c,isCustom:true}));
-  return {...today,exercises:exerciseList};
+  }
+  state.customTodayExercises.forEach(c=>chosen.push({...c, groups:c.groups||groupsOf(c.muscle), isCustom:true}));
+  return {name:focus.nev, focusId:focus.id, groups:focus.groups, exercises:chosen};
 }
 
 /* ---------------------------------------------------------------- ANATÓMIA */
@@ -543,7 +674,7 @@ function selectExerciseInOverview(idx){
     state.highlightedExercise=idx;
     const ex=state.activeSession.exercises[idx];
     state.selectedMuscleFilter=null;
-    const gs=groupsOf(ex.muscle);
+    const gs=ex.groups||groupsOf(ex.muscle);
     document.getElementById('anatomy-hint').textContent=`Cél: ${gs.map(muscleName).join(', ')}`;
     // arra a nézetre váltunk, ahonnan a célizom egyáltalán látszik
     const BACK_ONLY=['lat','trap','rear_delt','triceps','glute','hamstring','lower_back'];
@@ -560,7 +691,7 @@ function updateAnatomyHighlights(){
     const cat=m.dataset.muscle;
     if(state.highlightedExercise!==null){
       const ex=state.activeSession.exercises[state.highlightedExercise];
-      m.classList.add(groupsOf(ex.muscle).includes(cat) ? 'active' : 'dim');
+      m.classList.add((ex.groups||groupsOf(ex.muscle)).includes(cat) ? 'active' : 'dim');
     }else if(state.selectedMuscleFilter){
       m.classList.add(cat===state.selectedMuscleFilter ? 'filter' : 'dim');
     }
@@ -571,7 +702,7 @@ function renderAnatomyExerciseList(){
   if(!state.activeSession) return;
   let show=state.activeSession.exercises;
   if(state.selectedMuscleFilter)
-    show=state.activeSession.exercises.filter(ex=>groupsOf(ex.muscle).includes(state.selectedMuscleFilter));
+    show=state.activeSession.exercises.filter(ex=>(ex.groups||groupsOf(ex.muscle)).includes(state.selectedMuscleFilter));
   if(show.length===0){
     list.innerHTML=`<div class="card" style="text-align:center;color:var(--dim);font-size:13px">Erre az izomra ma nincs gyakorlat.</div>`;
     return;
@@ -583,7 +714,7 @@ function renderAnatomyExerciseList(){
       <div style="display:flex;align-items:center;gap:12px">
         <div style="width:8px;height:30px;background:${sel?'var(--accent)':'var(--faint)'};border-radius:4px"></div>
         <div>
-          <div style="font-size:10px;color:var(--accent);letter-spacing:.15em;text-transform:uppercase;margin-bottom:2px">${esc(muscleNamesHu[ex.muscle]||ex.muscle)}</div>
+          <div style="font-size:10px;color:var(--accent);letter-spacing:.15em;text-transform:uppercase;margin-bottom:2px">${esc((ex.groups||groupsOf(ex.muscle)).map(muscleName).join(', '))}</div>
           <div style="font-weight:700;font-size:15px">${esc(ex.name)}</div>
         </div>
       </div>
@@ -613,6 +744,31 @@ function askConfirm(title,text,okLabel,cb){
     <button class="btn-secondary" onclick="hideModal()">MÉGSE</button>`);
 }
 function confirmYes(){ hideModal(); const cb=_confirmCb; _confirmCb=null; if(cb) cb(); }
+/* A mai terv átírása: előre beállított fókuszok. A választás CSAK a mai napra
+   érvényes, holnap visszatér a cél heti beosztása. */
+function openFocusPicker(){
+  const cur=todayFocus();
+  const kezi = state.todayFocus && state.todayFocus.date===new Date().toDateString();
+  const csoport=(cim,ids)=>`
+    <div class="lbl" style="margin:14px 0 8px">${cim}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:7px">
+      ${ids.map(id=>{const f=focusById(id); if(!f) return '';
+        const on=cur.id===id;
+        const db=f.groups.length?f.groups.reduce((n,g)=>n+exercisesFor(g,eqSet()).length,0):0;
+        return `<button class="chip ${on?'active':''}" onclick="setTodayFocus('${id}')" ${db===0&&f.groups.length?'disabled style="opacity:.35"':''}>
+          ${esc(f.nev)}${f.groups.length?` <span class="faint">${db}</span>`:''}</button>`;}).join('')}
+    </div>`;
+  openModal(`
+    <h3 class="hand" style="font-size:26px;margin:0 0 4px">Mai terv</h3>
+    <p class="tiny" style="margin:0 0 4px">Most: <b style="color:var(--accent)">${esc(cur.nev)}</b>${kezi?' (kézi választás)':' (heti beosztás szerint)'}</p>
+    <p class="tiny" style="margin:0">A választás csak a mai napra érvényes. A szám a választható gyakorlatok darabszáma.</p>
+    ${csoport('Nagy blokkok',['teljes','felsotest','alsotest','tolo','huzo','lab'])}
+    ${csoport('Izomcsoport',['mell','hat','vall','kar','bicepsz','tricepsz','has','comb','combhajl','far','vadli','alkar','derek'])}
+    ${csoport('Egyéb',['piheno'])}
+    ${kezi?`<button class="btn-secondary" style="margin-top:18px" onclick="clearTodayFocus()">Vissza a heti beosztásra</button>`:''}
+    <button class="btn-primary" style="margin-top:8px" onclick="hideModal()">Bezárás</button>`);
+}
+
 function showCalisthenicsInfo(){
   openModal(`
     <h3 class="hand" style="font-size:24px;margin:0 0 12px">CALISTHENICS</h3>
@@ -637,7 +793,7 @@ function addCustomExercise(){
   const reps=+document.getElementById('custom-ex-reps').value||10;
   const weight=+document.getElementById('custom-ex-weight').value||0;
   if(!name){ showToast('Adj meg egy nevet!'); return; }
-  state.customTodayExercises.push({id:'c'+Date.now(),name,muscle,sets,reps,rest:goals[state.goal].rest||60,weight,type:'custom'});
+  state.customTodayExercises.push({id:'c'+Date.now(),name,groups:[muscle],sets,reps,repMin:reps,repMax:reps,rest:90,weight,type:'custom'});
   state.customExercisesDate=new Date().toDateString();
   saveState(); renderPlan(); showToast('Gyakorlat hozzáadva');
 }
@@ -825,32 +981,30 @@ function renderPlan(){
       <div class="hand" style="font-size:28px;margin-bottom:4px">Mai cél teljesítve</div>
       <p class="dim" style="font-size:14px;margin:0">Szép munka. Pihenj jól, és gyere vissza holnap.</p>
     </div>`;
-  }else if(today && today.muscles.length>0){
+  }else if(today && today.exercises.length>0){
     const totalSets=today.exercises.reduce((s,e)=>s+e.sets,0);
-    const g=goals[state.goal];
-    const mins=Math.round(totalSets*(0.8+g.rest/60));
+    const mins=Math.round(today.exercises.reduce((a,e)=>a+e.sets*(0.8+e.rest/60),0));
     const intensity={build:'Közepes',calisthenics:'Közepes',cardio:'Könnyű',rest:'—'}[state.goal]||'Közepes';
+    const kezi = state.todayFocus && state.todayFocus.date===new Date().toDateString();
     card.innerHTML=`<div class="card">
       <div class="today-wrap">
         ${ill}
         <div class="today-info">
-          <div class="today-name">${esc(today.name)}</div>
-          <div class="today-meta">${ic('clock')} ${mins} perc</div>
+          <div class="today-name">${esc(today.name)}${kezi?' <span class="tiny" style="color:var(--accent)">· kézi</span>':''}</div>
+          <div class="today-meta">${ic('clock')} ${mins} perc · ${totalSets} szett</div>
           <div class="today-meta">${ic('dumbbell')} ${intensity} · ${today.exercises.length} gyakorlat</div>
           <button class="btn-primary" style="margin-top:11px" onclick="startSession()">Kezdés</button>
+          <button class="btn-secondary" style="margin-top:8px" onclick="openFocusPicker()">${ic('pen',13)} Mai terv átírása</button>
         </div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 12px">
-        ${today.exercises.map(ex=>`<span class="chip" style="padding:5px 11px;font-size:12px;font-weight:400;color:var(--dim)">${ex.isCustom?ic('user-plus',10)+' ':''}${esc(ex.name)} <span class="faint">${ex.sets}×${ex.reps}</span></span>`).join('')}
+        ${today.exercises.map(ex=>`<span class="chip" style="padding:5px 11px;font-size:12px;font-weight:400;color:var(--dim)">${ex.isCustom?ic('user-plus',10)+' ':''}${ex.tier?`<b style="color:var(--accent)">${ex.tier}</b> `:''}${esc(ex.name)} <span class="faint">${ex.sets}×${ex.repMin===ex.repMax?ex.reps:ex.repMin+'-'+ex.repMax}</span></span>`).join('')}
       </div>
       <button class="btn-secondary" onclick="toggleAddCustomEx()">Saját gyakorlat hozzáadása</button>
       <div class="add-form" id="add-custom-ex-form">
         <input type="text" id="custom-ex-name" placeholder="Gyakorlat neve" class="input-text mb-2">
         <select id="custom-ex-muscle" class="input-text mb-2">
-          <option value="chest">Mell</option><option value="back">Hát</option>
-          <option value="legs">Lábak</option><option value="shoulders">Vállak</option>
-          <option value="triceps">Tricepsz</option><option value="biceps">Bicepsz</option>
-          <option value="core">Törzs</option>
+          ${MUSCLE_KEYS.map(k=>`<option value="${k}">${muscleName(k)}</option>`).join('')}
         </select>
         <div class="grid grid-cols-3 gap-2 mb-3">
           <input type="number" inputmode="numeric" id="custom-ex-sets" placeholder="Szett" class="input-num" style="font-size:14px;padding:9px">
@@ -864,7 +1018,7 @@ function renderPlan(){
           <div class="lbl mb-2">Saját gyakorlatok</div>
           ${state.customTodayExercises.map(ex=>`
             <div class="meal-item">
-              <span style="font-size:14px">${esc(ex.name)} <span class="tiny">(${esc(muscleNamesHu[ex.muscle]||ex.muscle)})</span></span>
+              <span style="font-size:14px">${esc(ex.name)} <span class="tiny">(${esc((ex.groups||groupsOf(ex.muscle)).map(muscleName).join(', '))})</span></span>
               <div style="display:flex;align-items:center;gap:8px">
                 <span class="tiny num">${ex.sets}×${ex.reps} · ${ex.weight}kg</span>
                 <button onclick="deleteCustomExercise('${ex.id}')" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:13px">${ic('trash',13)}</button>
@@ -877,7 +1031,8 @@ function renderPlan(){
       <div style="font-size:46px;color:var(--dim);margin-bottom:8px">${ic('bed')}</div>
       <div class="hand" style="font-size:28px;margin-bottom:4px">Pihenőnap</div>
       <p class="dim" style="font-size:14px;margin:0 0 16px">Az izom pihenés közben nő. Ma vedd könnyebben.</p>
-      <button class="btn-primary" onclick="takeRestDay()">Pihenő rögzítése</button>
+      <button class="btn-primary mb-2" onclick="takeRestDay()">Pihenő rögzítése</button>
+      <button class="btn-secondary" onclick="openFocusPicker()">${ic('pen',13)} Mégis edzek — terv választása</button>
     </div>`;
   }
 
@@ -914,23 +1069,28 @@ function renderPlan(){
     </div>`;
 
   /* --- edzéscél kártyák --- */
-  document.getElementById('goal-grid').innerHTML=Object.entries(goals).map(([key,g])=>`
+  document.getElementById('goal-grid').innerHTML=Object.entries(GOAL_INFO).map(([key,g])=>`
     <div class="goal-card ${state.goal===key?'active':''}" onclick="setGoal('${key}')">
       <div class="flex justify-between items-start mb-2">
         <span style="font-size:21px;color:${state.goal===key?'var(--accent)':'var(--dim)'}">${ic(g.icon,21)}</span>
         ${state.goal===key?`<span style="color:var(--accent);font-size:15px">${ic('check',15)}</span>`:''}
         ${key==='calisthenics'?`<span onclick="event.stopPropagation();showCalisthenicsInfo()" style="color:var(--faint);font-size:15px;cursor:pointer">${ic('info',15)}</span>`:''}
       </div>
-      <div class="hand" style="font-size:21px;line-height:1.05;margin-bottom:2px">${esc(g.name)}</div>
+      <div class="hand" style="font-size:21px;line-height:1.05;margin-bottom:2px">${esc(g.nev)}</div>
       <div class="tiny">${esc(g.desc)}</div>
     </div>`).join('');
 
-  const todayStr=getDayOfWeek();
-  document.getElementById('weekly-schedule').innerHTML=goals[state.goal].split.workouts.map(w=>{
+  /* --- heti beosztás: a cél alapterve, a mai napon a tényleges fókusszal --- */
+  const plan=WEEK_PLANS[state.goal]||WEEK_PLANS.build;
+  const dayNames=['Hét','Ked','Sze','Csü','Pén','Szo','Vas'];
+  const todayIdx=(new Date().getDay()+6)%7;
+  document.getElementById('weekly-schedule').innerHTML=plan.days.map((fid,i)=>{
+    const f = i===todayIdx ? todayFocus() : focusById(fid);
     let cls='day-pill';
-    if(w.day===todayStr) cls+=' today';
-    else if(w.muscles.length===0) cls+=' rest';
-    return `<div class="${cls}"><span style="opacity:.75">${esc(w.day)}</span><span>${w.muscles.length===0?'pihen':esc(w.name.split(' ')[0])}</span></div>`;
+    if(i===todayIdx) cls+=' today';
+    else if(!f || f.groups.length===0) cls+=' rest';
+    const rovid = !f||f.groups.length===0 ? 'pihen' : f.nev.split(' ')[0].toLowerCase();
+    return `<div class="${cls}" onclick="${i===todayIdx?'openFocusPicker()':''}"><span style="opacity:.75">${dayNames[i]}</span><span>${esc(rovid)}</span></div>`;
   }).join('');
 
   renderRecovery();
@@ -982,8 +1142,8 @@ function renderTrain(){
   document.getElementById('session-progress').style.width=(s.completedSets.length/totalSets*100)+'%';
   const vol=s.completedSets.reduce((sum,set)=>sum+set.weight*set.reps,0);
   document.getElementById('volume-so-far').textContent=`${vol.toLocaleString('hu')} kg megemelve`;
-  const gs=groupsOf(ex.muscle);
-  document.getElementById('muscle-target').textContent=muscleName(ex.muscle);
+  const gs=ex.groups||groupsOf(ex.muscle);
+  document.getElementById('muscle-target').textContent=gs.map(muscleName).join(' + ');
   document.getElementById('exercise-name').innerHTML=esc(ex.name);
   document.getElementById('set-display').textContent=`${s.currentSet}/${ex.sets}`;
   document.getElementById('reps-display').textContent=ex.reps;
@@ -1177,13 +1337,16 @@ document.getElementById('anatomy-figure').addEventListener('click',e=>{
   if(p) tapMuscle(p.dataset.muscle);
 });
 
-function setGoal(g){ state.goal=g; saveState(); renderPlan(); showToast(`Cél: ${goals[g].name}`); }
+function setGoal(g){
+  state.goal=g; state.todayFocus=null;      // célváltásnál a kézi fókusz elveszti értelmét
+  saveState(); renderPlan(); showToast(`Cél: ${GOAL_INFO[g].nev}`);
+}
 
 /* ---------------------------------------------------------------- EDZÉS-FOLYAMAT */
 function startSession(){
   if(state.completedToday){ showToast('Ma már befejezted. Gyere vissza holnap!'); return; }
   const today=generateTodayWorkout();
-  if(!today || today.muscles.length===0){ showToast('Ma pihenőnap van.'); return; }
+  if(!today || today.exercises.length===0){ showToast('Ma pihenőnap — írd át a mai tervet, ha mégis edzel.'); return; }
   state.activeSession={
     workoutName:today.name,
     exercises:JSON.parse(JSON.stringify(today.exercises)),
@@ -1290,8 +1453,8 @@ function advance(restSeconds){
 function completeSet(){
   const s=state.activeSession; if(!s) return;
   const ex=s.exercises[s.currentExerciseIndex];
-  s.completedSets.push({exercise:ex.name,muscle:ex.muscle,set:s.currentSet,weight:ex.weight,reps:ex.reps});
-  state.lastWeights[ex.name]=ex.weight;
+  s.completedSets.push({exercise:ex.name,groups:ex.groups||groupsOf(ex.muscle),set:s.currentSet,weight:ex.weight,reps:ex.reps});
+  state.lastWeights[ex.id||ex.name]=ex.weight;
   const pr=state.personalRecords[ex.name]||0;
   if(ex.weight>pr && ex.weight>0){
     state.personalRecords[ex.name]=ex.weight;
@@ -1375,10 +1538,10 @@ function finishSession(){
   const volume=s.completedSets.reduce((sum,set)=>sum+set.weight*set.reps,0);
   const sets=s.completedSets.length;
   const muscleVol={};
-  s.completedSets.forEach(set=>{ muscleVol[set.muscle]=(muscleVol[set.muscle]||0)+set.weight*set.reps; });
+  s.completedSets.forEach(set=>(set.groups||groupsOf(set.muscle)).forEach(g=>{ muscleVol[g]=(muscleVol[g]||0)+set.weight*set.reps; }));
   // A regeneráció a testtérkép régióira íródik (a tricepsz/bicepsz a "karra"),
   // különben a kar sosem frissült volna.
-  Object.keys(muscleVol).forEach(m=>groupsOf(m).forEach(g=>{ state.muscleRecovery[g]=Date.now(); }));
+  Object.keys(muscleVol).forEach(g=>{ if(MUSCLES[g]) state.muscleRecovery[g]=Date.now(); });
 
   const xpGained=Math.floor(volume/100)+sets*5+50;
   grantXp(xpGained);
