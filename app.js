@@ -3,13 +3,15 @@
    A verziószám EGYEZIK a sw.js CACHE nevében lévő számmal (fitmates-vN).
    ========================================================================== */
 'use strict';
-const APP_VERSION = 5;
+const APP_VERSION = 6;
 
 /* ---------------------------------------------------------------- ÁLLAPOT */
 const DEFAULT_STATE = {
   user:{level:1,xp:0,streak:0,lastWorkoutDate:null,totalXp:0,name:''},
   weeklyGoal:4,
   todayFocus:null,                              // {date, id} — a mai terv kézi átírása
+  planImages:{},                                // terv-típus -> saját kép (dataURL)
+  savedExercises:[],                            // elmentett saját gyakorlatok (Profil)
   goal:'build',
   muscleRecovery:{},                            // izomcsoport -> utolsó terhelés időpontja (migrateRecovery tölti)
   lastWeights:{},
@@ -784,7 +786,71 @@ function showCalisthenicsInfo(){
     <button class="btn-primary" onclick="hideModal()">BEZÁRÁS</button>`);
 }
 
-/* ---------------------------------------------------------------- SAJÁT GYAKORLAT */
+/* ============================================================================
+   SAJÁT KÉPEK az edzésekhez
+   A galériából választott kép NÉGYZETRE vágva, 360px-re kicsinyítve tárolódik
+   (JPEG, ~20-40 KB) — a localStorage csak néhány MB. Terv-típusonként egy kép:
+   ez jelenik meg a „Mai edzés" kisképeként a rajzolt figura helyett.
+   ========================================================================== */
+function pickImageFile(){
+  return new Promise(res=>{
+    const inp=document.createElement('input');
+    inp.type='file'; inp.accept='image/*';
+    inp.onchange=()=>res(inp.files && inp.files[0] ? inp.files[0] : null);
+    inp.click();
+  });
+}
+async function fileToThumb(file, size=360){
+  // a createImageBitmap kezeli a telefonos képek EXIF-forgatását is
+  let src=null, url=null;
+  try{ src=await createImageBitmap(file,{imageOrientation:'from-image'}); }catch(e){}
+  if(!src){
+    url=URL.createObjectURL(file);
+    src=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=url;});
+  }
+  const w=src.width||src.naturalWidth, h=src.height||src.naturalHeight;
+  const s=Math.min(w,h);                                   // középre igazított négyzet-vágás
+  const c=document.createElement('canvas');
+  c.width=c.height=size;
+  c.getContext('2d').drawImage(src,(w-s)/2,(h-s)/2,s,s,0,0,size,size);
+  if(src.close) src.close();
+  if(url) URL.revokeObjectURL(url);
+  return c.toDataURL('image/jpeg',0.82);
+}
+async function choosePlanImage(focusId){
+  const file=await pickImageFile();
+  if(!file) return;
+  showToast('Kép feldolgozása…');
+  let data;
+  try{ data=await fileToThumb(file); }
+  catch(e){ showToast('A képet nem sikerült beolvasni'); return; }
+  const prev=state.planImages[focusId];
+  state.planImages[focusId]=data;
+  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+  catch(e){                                                // tele a tár: visszavonjuk
+    if(prev) state.planImages[focusId]=prev; else delete state.planImages[focusId];
+    showToast('Nincs elég hely a képnek'); return;
+  }
+  renderPlan(); showToast('Kép beállítva');
+}
+function planImageMenu(focusId){
+  if(!state.planImages[focusId]){ choosePlanImage(focusId); return; }
+  openModal(`<h3 class="hand" style="font-size:24px;margin:0 0 14px">Kép az edzéshez</h3>
+    <img src="${state.planImages[focusId]}" style="width:100%;max-width:200px;display:block;margin:0 auto 16px;border-radius:16px">
+    <button class="btn-primary mb-2" onclick="hideModal();choosePlanImage('${focusId}')">Másik kép</button>
+    <button class="btn-secondary mb-2" onclick="removePlanImage('${focusId}')" style="color:var(--danger)">Kép törlése</button>
+    <button class="btn-secondary" onclick="hideModal()">Mégse</button>`);
+}
+function removePlanImage(focusId){
+  delete state.planImages[focusId];
+  saveState(); hideModal(); renderPlan(); showToast('Kép törölve');
+}
+
+/* ============================================================================
+   SAJÁT GYAKORLATOK
+   A hozzáadott gyakorlat MEGMARAD a Profil képernyőn (savedExercises), azzal
+   együtt, hogy melyik edzéshez adtad hozzá — így később bármikor visszatehető.
+   ========================================================================== */
 function toggleAddCustomEx(){ document.getElementById('add-custom-ex-form').classList.toggle('active'); }
 function addCustomExercise(){
   const name=document.getElementById('custom-ex-name').value.trim();
@@ -793,13 +859,35 @@ function addCustomExercise(){
   const reps=+document.getElementById('custom-ex-reps').value||10;
   const weight=+document.getElementById('custom-ex-weight').value||0;
   if(!name){ showToast('Adj meg egy nevet!'); return; }
-  state.customTodayExercises.push({id:'c'+Date.now(),name,groups:[muscle],sets,reps,repMin:reps,repMax:reps,rest:90,weight,type:'custom'});
+  const focus=todayFocus();
+  const ex={id:'c'+Date.now(),name,groups:[muscle],sets,reps,repMin:reps,repMax:reps,rest:90,weight,type:'custom'};
+  state.customTodayExercises.push(ex);
   state.customExercisesDate=new Date().toDateString();
-  saveState(); renderPlan(); showToast('Gyakorlat hozzáadva');
+  // mentés a könyvtárba (név+izomcsoport szerint egyszer)
+  const kulcs=(name+'|'+muscle).toLowerCase();
+  if(!state.savedExercises.some(s=>(s.name+'|'+s.groups[0]).toLowerCase()===kulcs)){
+    state.savedExercises.push({id:'s'+Date.now(),name,groups:[muscle],sets,reps,weight,
+      addedTo:focus?focus.nev:'—', addedToId:focus?focus.id:null, createdAt:new Date().toISOString()});
+  }
+  saveState(); renderPlan(); showToast('Hozzáadva és elmentve a Profilba');
 }
 function deleteCustomExercise(id){
   state.customTodayExercises=state.customTodayExercises.filter(e=>String(e.id)!==String(id));
-  saveState(); renderPlan(); showToast('Gyakorlat törölve');
+  saveState(); renderPlan(); showToast('Gyakorlat törölve a mai tervből');
+}
+// könyvtárból vissza a mai tervbe
+function useSavedExercise(id){
+  const s=state.savedExercises.find(x=>String(x.id)===String(id));
+  if(!s) return;
+  if(state.customTodayExercises.some(e=>e.name===s.name)){ showToast('Már a mai tervben van'); return; }
+  state.customTodayExercises.push({id:'c'+Date.now(),name:s.name,groups:s.groups.slice(),
+    sets:s.sets,reps:s.reps,repMin:s.reps,repMax:s.reps,rest:90,weight:s.weight,type:'custom'});
+  state.customExercisesDate=new Date().toDateString();
+  saveState(); renderProfile(); renderPlan(); showToast('Hozzáadva a mai tervhez');
+}
+function deleteSavedExercise(id){
+  state.savedExercises=state.savedExercises.filter(x=>String(x.id)!==String(id));
+  saveState(); renderProfile(); showToast('Törölve a mentések közül');
 }
 
 /* ---------------------------------------------------------------- ÉTREND */
@@ -974,7 +1062,15 @@ function renderPlan(){
   /* --- mai edzés --- */
   const card=document.getElementById('today-workout-card');
   const today=generateTodayWorkout();
-  const ill=`<svg class="today-ill" viewBox="0 0 200 168"><use href="#ill-lifter"/></svg>`;
+  // saját kép, ha van hozzá — különben a rajzolt figura; mindkettő koppintható
+  const fid=(today&&today.focusId)||todayFocus().id;
+  const kep=state.planImages[fid];
+  const ill = kep
+    ? `<div class="today-photo" onclick="planImageMenu('${fid}')"><img src="${kep}" alt="">
+         <span class="photo-edit">${ic('pen',13)}</span></div>`
+    : `<div class="ill-btn" onclick="planImageMenu('${fid}')">
+         <svg class="today-ill" viewBox="0 0 200 168"><use href="#ill-lifter"/></svg>
+         <span class="photo-edit">${ic('pen',13)}</span></div>`;
   if(state.completedToday){
     card.innerHTML=`<div class="card text-center" style="padding:26px 20px">
       <div style="font-size:46px;color:var(--lime);margin-bottom:8px">${ic('check-circle')}</div>
@@ -1300,6 +1396,28 @@ function renderProfile(){
   document.getElementById('profile-volume').textContent=totalVol>1000?(totalVol/1000).toFixed(1)+'t':totalVol;
   const totalSec=state.workouts.reduce((s,w)=>s+(w.duration||0),0);
   document.getElementById('profile-time').textContent=Math.floor(totalSec/3600)+'ó '+Math.floor((totalSec%3600)/60)+'p';
+
+  /* --- elmentett saját gyakorlatok: mikor és melyik edzéshez adtad hozzá --- */
+  const sx=state.savedExercises||[];
+  document.getElementById('saved-ex-count').textContent = sx.length ? sx.length+' db' : '';
+  document.getElementById('saved-exercises').innerHTML = sx.length===0
+    ? `<div class="card tiny text-center">Még nincs mentett gyakorlatod. A Kezdőlapon a „Saját gyakorlat hozzáadása" gombbal vehetsz fel újat — automatikusan ide is bekerül.</div>`
+    : sx.slice().reverse().map(s=>{
+        const mai=state.customTodayExercises.some(e=>e.name===s.name);
+        const d=new Date(s.createdAt);
+        return `<div class="card tight mb-2" style="padding:13px">
+          <div class="flex justify-between items-start gap-2">
+            <div style="flex:1;min-width:0">
+              <div class="hand" style="font-size:21px;line-height:1.1">${esc(s.name)}</div>
+              <div class="tiny">${esc(s.groups.map(muscleName).join(', '))} · ${s.sets}×${s.reps}${s.weight?' · '+s.weight+' kg':''}</div>
+              <div class="tiny" style="margin-top:3px">Hozzáadva: <b style="color:var(--accent)">${esc(s.addedTo)}</b> · ${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}</div>
+            </div>
+            <button class="icon-btn bare" onclick="deleteSavedExercise('${s.id}')" style="color:var(--danger);font-size:14px">${ic('trash',14)}</button>
+          </div>
+          <button class="btn-secondary mt-2" onclick="useSavedExercise('${s.id}')" ${mai?'disabled style="opacity:.45"':''}>
+            ${mai?'Már a mai tervben':'Mai tervhez adom'}</button>
+        </div>`;
+      }).join('');
 
   let unlocked=0;
   document.getElementById('achievements-grid').innerHTML=achievements.map(a=>{
