@@ -3,12 +3,13 @@
    A verziószám EGYEZIK a sw.js CACHE nevében lévő számmal (fitmates-vN).
    ========================================================================== */
 'use strict';
-const APP_VERSION = 6;
+const APP_VERSION = 7;
 
 /* ---------------------------------------------------------------- ÁLLAPOT */
 const DEFAULT_STATE = {
   user:{level:1,xp:0,streak:0,lastWorkoutDate:null,totalXp:0,name:''},
   weeklyGoal:4,
+  weekPlan:null,                                // saját heti beosztás (null = DEFAULT_WEEK)
   todayFocus:null,                              // {date, id} — a mai terv kézi átírása
   planImages:{},                                // terv-típus -> saját kép (dataURL)
   savedExercises:[],                            // elmentett saját gyakorlatok (Profil)
@@ -426,13 +427,41 @@ const FOCUS_PRESETS = [
 ];
 const focusById = id => FOCUS_PRESETS.find(f=>f.id===id);
 
-// heti alapbeosztás célonként (ezt írja felül a mai fókusz, ha van)
-const WEEK_PLANS = {
-  build:{nev:'Toló / Húzó / Láb', days:['tolo','huzo','lab','tolo','huzo','lab','piheno']},
-  calisthenics:{nev:'Saját súly', days:['tolo','huzo','alsotest','has','teljes','piheno','piheno']},
-  cardio:{nev:'Körkörös', days:['felsotest','alsotest','has','piheno','teljes','teljes','piheno']},
-  rest:{nev:'Pihenőhét', days:['piheno','piheno','piheno','piheno','piheno','piheno','piheno']}
+/* ============================================================================
+   HETI BEOSZTÁS
+   Hétfőtől vasárnapig, izomcsoportonként. A felhasználó sajátja — a Kezdőlapon
+   az „Ezen a héten" kártyán bármelyik nap átírható, és úgy is marad.
+   ========================================================================== */
+const DEFAULT_WEEK = [
+  ['biceps','triceps','forearm'],                       // hétfő
+  ['front_delt','side_delt','rear_delt'],               // kedd
+  ['chest','lat','trap'],                               // szerda
+  ['abs','oblique','forearm','biceps','triceps'],       // csütörtök
+  ['quad','hamstring','glute','calf'],                  // péntek
+  [],                                                   // szombat — pihenő
+  []                                                    // vasárnap — pihenő
+];
+const DAY_NAMES=['Hétfő','Kedd','Szerda','Csütörtök','Péntek','Szombat','Vasárnap'];
+const DAY_SHORT=['Hét','Ked','Sze','Csü','Pén','Szo','Vas'];
+
+/* A nap neve a benne lévő izomcsoportokból: a finom csoportokat nagyobb
+   testtájakká vonjuk össze, így „Mell + Hát", „Has + Kar" lesz belőle. */
+const COARSE_OF = {
+  chest:'Mell', lat:'Hát', trap:'Hát',
+  front_delt:'Váll', side_delt:'Váll', rear_delt:'Váll',
+  biceps:'Kar', triceps:'Kar', forearm:'Kar',
+  abs:'Has', oblique:'Has',
+  quad:'Láb', hamstring:'Láb', glute:'Láb', calf:'Láb',
+  lower_back:'Derék'
 };
+function labelForGroups(groups){
+  if(!groups || !groups.length) return 'Pihenőnap';
+  const out=[];
+  groups.forEach(g=>{ const c=COARSE_OF[g]||muscleName(g); if(!out.includes(c)) out.push(c); });
+  return out.join(' + ');
+}
+const weekPlan = () => (state.weekPlan && state.weekPlan.length===7) ? state.weekPlan : DEFAULT_WEEK;
+const dayIndexToday = () => (new Date().getDay()+6)%7;      // hétfő = 0
 const GOAL_INFO = {
   build:{nev:'Izomépítés',desc:'Edzőtermi · súlyokkal',icon:'dumbbell',eq:['rud','sulyzo','gep','kabel','sajat','gumi']},
   calisthenics:{nev:'Calisthenics',desc:'Saját súly · funkcionális',icon:'weight',eq:['sajat']},
@@ -491,15 +520,17 @@ const eqSet = () => new Set(goalInfo().eq);
 
 /* A mai fókusz: ha a felhasználó átírta a Mai edzés kártyán, az ÜT; egyébként a
    cél heti alapbeosztásából jön a nap. A kézi választás csak MÁRA érvényes. */
+function focusForDay(i){
+  const groups=(weekPlan()[i]||[]).slice();
+  return {id:'d'+i, nev:labelForGroups(groups), groups, napId:i};
+}
 function todayFocus(){
   const t=new Date().toDateString();
   if(state.todayFocus && state.todayFocus.date===t){
     const f=focusById(state.todayFocus.id);
     if(f) return f;
   }
-  const plan=WEEK_PLANS[state.goal]||WEEK_PLANS.build;
-  const dayIdx=(new Date().getDay()+6)%7;           // hétfő = 0
-  return focusById(plan.days[dayIdx]) || focusById('piheno');
+  return focusForDay(dayIndexToday());
 }
 function setTodayFocus(id){
   state.todayFocus={date:new Date().toDateString(), id};
@@ -746,8 +777,64 @@ function askConfirm(title,text,okLabel,cb){
     <button class="btn-secondary" onclick="hideModal()">MÉGSE</button>`);
 }
 function confirmYes(){ hideModal(); const cb=_confirmCb; _confirmCb=null; if(cb) cb(); }
+/* ============================================================================
+   HETI BEOSZTÁS SZERKESZTŐJE
+   Egy nap = izomcsoportok halmaza. Régiónként csoportosítva, hogy a 16 csoport
+   ne legyen áttekinthetetlen; a gyors gombokkal egész testtáj bejelölhető.
+   ========================================================================== */
+const EDITOR_REGIONS=[
+  {nev:'Mell',  keys:['chest']},
+  {nev:'Hát',   keys:['lat','trap','lower_back']},
+  {nev:'Váll',  keys:['front_delt','side_delt','rear_delt']},
+  {nev:'Kar',   keys:['biceps','triceps','forearm']},
+  {nev:'Has',   keys:['abs','oblique']},
+  {nev:'Láb',   keys:['quad','hamstring','glute','calf']}
+];
+let dayDraft=null, dayDraftIdx=null;
+function openDayEditor(i){
+  dayDraftIdx=i;
+  dayDraft=new Set(weekPlan()[i]||[]);
+  drawDayEditor();
+}
+function drawDayEditor(){
+  const i=dayDraftIdx;
+  const sel=[...dayDraft];
+  openModal(`
+    <h3 class="hand" style="font-size:26px;margin:0 0 2px">${DAY_NAMES[i]}</h3>
+    <p class="tiny" style="margin:0 0 2px">Mit edzel ezen a napon? A beállítás minden héten érvényes.</p>
+    <p class="tiny" style="margin:0 0 6px;color:var(--accent)">${esc(labelForGroups(sel))}${sel.length?` · ${sel.length} izomcsoport`:''}</p>
+    ${EDITOR_REGIONS.map(r=>{
+      const mind=r.keys.every(k=>dayDraft.has(k));
+      return `<div class="lbl" style="margin:12px 0 6px;display:flex;justify-content:space-between;align-items:center">
+          <span>${r.nev}</span>
+          <button class="tiny" style="background:none;border:none;color:var(--accent);cursor:pointer"
+            onclick="toggleRegion('${r.keys.join(',')}',${mind?0:1})">${mind?'mind ki':'mind be'}</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${r.keys.map(k=>`<button class="chip ${dayDraft.has(k)?'active':''}" onclick="toggleDayGroup('${k}')">${esc(muscleName(k))}</button>`).join('')}
+        </div>`;
+    }).join('')}
+    <div class="grid grid-cols-2 gap-2" style="margin-top:20px">
+      <button class="btn-secondary" onclick="clearDayDraft()">Pihenőnap</button>
+      <button class="btn-secondary" onclick="hideModal()">Mégse</button>
+    </div>
+    <button class="btn-primary" style="margin-top:8px" onclick="saveDayEditor()">Mentés</button>`);
+}
+function toggleDayGroup(k){ dayDraft.has(k)?dayDraft.delete(k):dayDraft.add(k); drawDayEditor(); }
+function toggleRegion(keys,on){ keys.split(',').forEach(k=>on?dayDraft.add(k):dayDraft.delete(k)); drawDayEditor(); }
+function clearDayDraft(){ dayDraft=new Set(); drawDayEditor(); }
+function saveDayEditor(){
+  const wp=weekPlan().map(a=>a.slice());
+  wp[dayDraftIdx]=[...dayDraft];
+  state.weekPlan=wp;
+  // ha a MAI napot írtuk át, a korábbi kézi felülírás már félrevezetne
+  if(dayDraftIdx===dayIndexToday()) state.todayFocus=null;
+  saveState(); hideModal(); renderPlan();
+  showToast(`${DAY_NAMES[dayDraftIdx]}: ${labelForGroups(wp[dayDraftIdx])}`);
+}
+
 /* A mai terv átírása: előre beállított fókuszok. A választás CSAK a mai napra
-   érvényes, holnap visszatér a cél heti beosztása. */
+   érvényes, holnap visszatér a heti beosztás. */
 function openFocusPicker(){
   const cur=todayFocus();
   const kezi = state.todayFocus && state.todayFocus.date===new Date().toDateString();
@@ -1176,17 +1263,17 @@ function renderPlan(){
       <div class="tiny">${esc(g.desc)}</div>
     </div>`).join('');
 
-  /* --- heti beosztás: a cél alapterve, a mai napon a tényleges fókusszal --- */
-  const plan=WEEK_PLANS[state.goal]||WEEK_PLANS.build;
-  const dayNames=['Hét','Ked','Sze','Csü','Pén','Szo','Vas'];
-  const todayIdx=(new Date().getDay()+6)%7;
-  document.getElementById('weekly-schedule').innerHTML=plan.days.map((fid,i)=>{
-    const f = i===todayIdx ? todayFocus() : focusById(fid);
+  /* --- heti beosztás: a saját terv, minden nap koppintással átírható --- */
+  const todayIdx=dayIndexToday();
+  document.getElementById('weekly-schedule').innerHTML=weekPlan().map((groups,i)=>{
+    const f = i===todayIdx ? todayFocus() : focusForDay(i);
     let cls='day-pill';
     if(i===todayIdx) cls+=' today';
-    else if(!f || f.groups.length===0) cls+=' rest';
-    const rovid = !f||f.groups.length===0 ? 'pihen' : f.nev.split(' ')[0].toLowerCase();
-    return `<div class="${cls}" onclick="${i===todayIdx?'openFocusPicker()':''}"><span style="opacity:.75">${dayNames[i]}</span><span>${esc(rovid)}</span></div>`;
+    else if(!f.groups.length) cls+=' rest';
+    const rovid = !f.groups.length ? 'pihen' : f.nev.replace(/ \+ /g,'+').toLowerCase();
+    return `<div class="${cls}" onclick="openDayEditor(${i})" title="${esc(f.nev)}">
+      <span style="opacity:.75">${DAY_SHORT[i]}</span>
+      <span style="font-size:8.5px;line-height:1.05;text-align:center;padding:0 2px">${esc(rovid)}</span></div>`;
   }).join('');
 
   renderRecovery();
