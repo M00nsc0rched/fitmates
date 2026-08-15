@@ -3,7 +3,7 @@
    A verziószám EGYEZIK a sw.js CACHE nevében lévő számmal (fitmates-vN).
    ========================================================================== */
 'use strict';
-const APP_VERSION = 7;
+const APP_VERSION = 8;
 
 /* ---------------------------------------------------------------- ÁLLAPOT */
 const DEFAULT_STATE = {
@@ -71,22 +71,142 @@ function migrateRecovery(rec){
   });
   return out;
 }
+/* ============================================================================
+   TÁROLÁS — KÉT PÁRHUZAMOS MÁSOLAT
+   A localStorage-t a böngésző/iOS bizonyos helyzetekben kiüríti (privát
+   böngészés, tárhely-szűke, adattörlés), és akkor MINDEN elveszne. Ezért
+   minden mentés EGYSZERRE megy localStorage-ba és IndexedDB-be; induláskor a
+   FRISSEBB példány nyer. Ha az egyik tár kiürül, a másikból visszatér az adat.
+   ========================================================================== */
+const IDB_NAME='fitmates', IDB_STORE='kv', IDB_KEY='state';
+const SAVE_INFO={ls:null, idb:null, lastOk:0, lastErr:'', size:0, persisted:null, usage:null, quota:null};
+
+function idbOpen(){
+  return new Promise((ok,no)=>{
+    if(!window.indexedDB) return no(new Error('nincs IndexedDB'));
+    const r=indexedDB.open(IDB_NAME,1);
+    r.onupgradeneeded=()=>{ if(!r.result.objectStoreNames.contains(IDB_STORE)) r.result.createObjectStore(IDB_STORE); };
+    r.onsuccess=()=>ok(r.result);
+    r.onerror=()=>no(r.error||new Error('IndexedDB hiba'));
+  });
+}
+function idbSet(k,v){
+  return idbOpen().then(db=>new Promise((ok,no)=>{
+    const t=db.transaction(IDB_STORE,'readwrite');
+    t.objectStore(IDB_STORE).put(v,k);
+    t.oncomplete=()=>{db.close();ok(true);};
+    t.onerror=()=>{db.close();no(t.error);};
+  }));
+}
+function idbGet(k){
+  return idbOpen().then(db=>new Promise((ok,no)=>{
+    const t=db.transaction(IDB_STORE,'readonly');
+    const rq=t.objectStore(IDB_STORE).get(k);
+    rq.onsuccess=()=>{db.close();ok(rq.result);};
+    rq.onerror=()=>{db.close();no(rq.error);};
+  }));
+}
+function idbDel(k){ return idbOpen().then(db=>new Promise(ok=>{
+  const t=db.transaction(IDB_STORE,'readwrite'); t.objectStore(IDB_STORE).delete(k);
+  t.oncomplete=()=>{db.close();ok(true);}; t.onerror=()=>{db.close();ok(false);};
+})); }
+
+function parseSave(raw){
+  const s = deepMerge(JSON.parse(JSON.stringify(DEFAULT_STATE)), JSON.parse(raw));
+  s.muscleRecovery = migrateRecovery(s.muscleRecovery);
+  return s;
+}
+/* Ha volt mentés, de nem sikerült értelmezni (sérült vagy ismeretlen szerkezet),
+   NEM írjuk felül: félretesszük, és a mentés le van tiltva, amíg a felhasználó
+   nem dönt. Enélkül egyetlen hibás betöltés véglegesen kinullázna mindent. */
+let LOAD_ERROR=null, ALLOW_WIPE=false;
 function loadState(){
-  try{
-    const raw = localStorage.getItem(LS_KEY) || localStorage.getItem(LS_LEGACY);
-    if(raw){
-      const s = deepMerge(JSON.parse(JSON.stringify(DEFAULT_STATE)), JSON.parse(raw));
-      s.muscleRecovery = migrateRecovery(s.muscleRecovery);
-      return s;
+  let raw=null;
+  try{ raw = localStorage.getItem(LS_KEY) || localStorage.getItem(LS_LEGACY); }catch(e){}
+  if(raw){
+    try{ return parseSave(raw); }
+    catch(e){
+      LOAD_ERROR=(e&&e.message)||String(e);
+      console.warn('A mentést nem sikerült értelmezni — félretéve.', e);
+      try{ localStorage.setItem(LS_KEY+'_serult', raw); }catch(e2){}
     }
-  }catch(e){ console.warn('Mentés betöltése sikertelen', e); }
+  }
   return JSON.parse(JSON.stringify(DEFAULT_STATE));
 }
-function saveState(){
-  try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-  catch(e){ showToast('Mentés sikertelen (tele a tár?)'); }
+// „üresnek” az számít, amiben sem edzés, sem összegyűjtött XP nincs
+function ureseNekTunik(s){
+  return (!s || !s.workouts || s.workouts.length===0) && (!s || !s.user || !s.user.totalXp);
 }
+function saveState(){
+  /* VÉDELEM: üres állapot soha ne írjon felül tartalmas mentést. Ez fogja meg
+     a „minden eltűnt” esetet akkor is, ha egy jövőbeli hiba nullázná az appot. */
+  if(!ALLOW_WIPE && ureseNekTunik(state)){
+    if(LOAD_ERROR){ mentesFigyelmeztetes(); return; }
+    try{
+      const prev=localStorage.getItem(LS_KEY);
+      if(prev && !ureseNekTunik(JSON.parse(prev))){
+        console.warn('Üres állapot mentése megtagadva — a meglévő mentés érintetlen.');
+        return;
+      }
+    }catch(e){}
+  }
+  state.savedAt = Date.now();
+  let json;
+  try{ json = JSON.stringify(state); }catch(e){ return; }
+  SAVE_INFO.size = json.length;
+  try{
+    localStorage.setItem(LS_KEY, json);
+    SAVE_INFO.ls=true; SAVE_INFO.lastOk=Date.now();
+  }catch(e){
+    SAVE_INFO.ls=false; SAVE_INFO.lastErr=(e && e.name) || String(e);
+    mentesFigyelmeztetes();
+  }
+  idbSet(IDB_KEY,json)
+    .then(()=>{ SAVE_INFO.idb=true; SAVE_INFO.lastOk=Date.now(); })
+    .catch(e=>{ SAVE_INFO.idb=false; SAVE_INFO.lastErr=(e&&e.name)||String(e); mentesFigyelmeztetes(); });
+}
+let mentesFigyelmeztetveAt=0;
+function mentesFigyelmeztetes(){
+  if(SAVE_INFO.ls || SAVE_INFO.idb) return;            // legalább az egyik tár él
+  if(Date.now()-mentesFigyelmeztetveAt < 30000) return;
+  mentesFigyelmeztetveAt=Date.now();
+  showToast('⚠ A mentés nem sikerül — nézd meg a Profil / Mentés állapota részt');
+}
+
 let state = loadState();
+
+/* Az IndexedDB aszinkron, ezért a localStorage-ból indulunk, és utólag
+   ellenőrizzük, van-e FRISSEBB példány a tartalék tárban. */
+async function hydrateFromIDB(){
+  try{
+    const raw = await idbGet(IDB_KEY);
+    SAVE_INFO.idb = true;
+    if(!raw){ saveState(); return; }                   // első futás: másolat készítése
+    const other = JSON.parse(raw);
+    if((other.savedAt||0) > (state.savedAt||0)){
+      state = parseSave(raw);
+      renderAll();
+      showToast('Mentés visszaállítva a tartalék tárból');
+    }
+  }catch(e){ SAVE_INFO.idb=false; SAVE_INFO.lastErr=(e&&e.name)||String(e); }
+}
+/* Tartós tárolás kérése: így a böngésző nem üríti helyszűkében. */
+async function kerTartosTarolast(){
+  try{
+    if(navigator.storage && navigator.storage.persisted){
+      SAVE_INFO.persisted = await navigator.storage.persisted();
+      if(!SAVE_INFO.persisted && navigator.storage.persist)
+        SAVE_INFO.persisted = await navigator.storage.persist();
+    }
+    if(navigator.storage && navigator.storage.estimate){
+      const e=await navigator.storage.estimate();
+      SAVE_INFO.usage=e.usage; SAVE_INFO.quota=e.quota;
+    }
+  }catch(e){}
+}
+// az app elrejtésekor/bezárásakor még egy biztonsági mentés
+['pagehide','freeze'].forEach(ev=>window.addEventListener(ev,()=>saveState()));
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') saveState(); });
 
 /* ---------------------------------------------------------------- IKONOK */
 function ic(name, size){
@@ -1506,6 +1626,8 @@ function renderProfile(){
         </div>`;
       }).join('');
 
+  renderSaveStatus();
+
   let unlocked=0;
   document.getElementById('achievements-grid').innerHTML=achievements.map(a=>{
     const on=state.achievements.includes(a.id);
@@ -1517,6 +1639,47 @@ function renderProfile(){
   }).join('');
   document.getElementById('achievement-count').textContent=`${unlocked} / ${achievements.length}`;
   document.getElementById('app-version').textContent=APP_VERSION;
+}
+
+/* Mentés-diagnosztika: ha valaha megint eltűnnének az adatok, itt látszik,
+   MELYIK tár hibázik — a felhasználónak és nekem is ez az első kapaszkodó. */
+function renderSaveStatus(){
+  const box=document.getElementById('save-status');
+  if(!box) return;
+  const jel=v=>v===true?'<b style="color:var(--success)">működik</b>'
+            :v===false?'<b style="color:var(--danger)">HIBA</b>'
+            :'<span class="faint">még nem próbált</span>';
+  const ido=t=>{ if(!t) return '—'; const d=new Date(t);
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`; };
+  const mb=v=>v==null?'—':(v>1048576?(v/1048576).toFixed(1)+' MB':Math.round(v/1024)+' KB');
+  const baj = SAVE_INFO.ls===false || SAVE_INFO.idb===false;
+  box.innerHTML=`
+    ${baj?`<div class="mb-3" style="color:var(--danger);font-size:13px;line-height:1.45">
+        ⚠ Az egyik tár nem működik. Ha privát böngészésben (Private Browsing) nyitottad meg,
+        a böngésző semmit nem enged menteni — nyisd meg normál ablakban, vagy telepítsd
+        a kezdőképernyőre.</div>`:''}
+    <div class="muscle-row"><div class="label">Fő tár (localStorage)</div><div class="tiny">${jel(SAVE_INFO.ls)}</div></div>
+    <div class="muscle-row"><div class="label">Tartalék tár (IndexedDB)</div><div class="tiny">${jel(SAVE_INFO.idb)}</div></div>
+    <div class="muscle-row"><div class="label">Utolsó sikeres mentés</div><div class="tiny num">${ido(SAVE_INFO.lastOk)}</div></div>
+    <div class="muscle-row"><div class="label">Mentés mérete</div><div class="tiny num">${mb(SAVE_INFO.size)}</div></div>
+    <div class="muscle-row"><div class="label">Tartós tárolás</div><div class="tiny">${SAVE_INFO.persisted===true?'<b style="color:var(--success)">engedélyezve</b>':SAVE_INFO.persisted===false?'<span style="color:var(--warning)">nem garantált</span>':'—'}</div></div>
+    <div class="muscle-row"><div class="label">Foglalt / elérhető</div><div class="tiny num">${mb(SAVE_INFO.usage)} / ${mb(SAVE_INFO.quota)}</div></div>
+    ${SAVE_INFO.lastErr?`<div class="tiny" style="margin-top:8px;color:var(--warning)">Utolsó hiba: ${esc(SAVE_INFO.lastErr)}</div>`:''}
+    <div class="tiny" style="margin-top:10px">Ha eltűnnének az adatok: a Mentés fájlba gombbal bármikor készíthetsz másolatot, és a Visszatöltéssel bármikor helyreállítható.</div>`;
+}
+/* Írás-olvasás körteszt: valóban túlél-e egy mentés mindkét tárban. */
+async function mentesTeszt(){
+  const proba='fitmates_test_'+Date.now();
+  let ls=false, idb=false, err='';
+  try{ localStorage.setItem(proba,'1'); ls=localStorage.getItem(proba)==='1'; localStorage.removeItem(proba); }
+  catch(e){ err=(e&&e.name)||String(e); }
+  try{ await idbSet('__test',proba); idb=(await idbGet('__test'))===proba; await idbDel('__test'); }
+  catch(e){ err=err||((e&&e.name)||String(e)); }
+  SAVE_INFO.ls=ls; SAVE_INFO.idb=idb; if(err) SAVE_INFO.lastErr=err;
+  await kerTartosTarolast();
+  saveState();
+  renderSaveStatus();
+  showToast(ls&&idb ? 'Mindkét tár működik ✓' : (ls||idb ? 'Csak az egyik tár működik' : 'Egyik tár sem működik!'));
 }
 
 function renderAll(){ renderPlan(); renderTrain(); renderDiet(); renderProgress(); renderProfile(); }
@@ -1809,8 +1972,10 @@ function importData(){
       try{
         const o=JSON.parse(r.result);
         if(!o.user) throw new Error('hibás fájl');
+        ALLOW_WIPE=true; LOAD_ERROR=null;
         state=deepMerge(JSON.parse(JSON.stringify(DEFAULT_STATE)),o);
-        saveState(); renderAll(); switchScreen('plan'); showToast('Mentés visszatöltve');
+        state.muscleRecovery=migrateRecovery(state.muscleRecovery);
+        saveState(); ALLOW_WIPE=false; renderAll(); switchScreen('plan'); showToast('Mentés visszatöltve');
       }catch(e){ showToast('Hibás mentésfájl'); }
     };
     r.readAsText(f);
@@ -1819,8 +1984,12 @@ function importData(){
 }
 function resetData(){
   askConfirm('Minden adat törlése?','Ez véglegesen törli az edzéseidet, szintedet és jelvényeidet. Nem visszavonható.','Törlés',()=>{
+    ALLOW_WIPE=true; LOAD_ERROR=null;
     state=JSON.parse(JSON.stringify(DEFAULT_STATE));
-    saveState(); renderAll(); switchScreen('plan'); showToast('Adatok törölve');
+    idbDel(IDB_KEY).catch(()=>{});
+    try{ localStorage.removeItem(LS_KEY+'_serult'); }catch(e){}
+    saveState(); ALLOW_WIPE=false;
+    renderAll(); switchScreen('plan'); showToast('Adatok törölve');
   });
 }
 
@@ -1860,6 +2029,10 @@ function scalePhone(){
 window.addEventListener('resize',scalePhone); scalePhone();
 
 renderAll();
+
+/* tartalék tár + tartós tárolás — az adatvesztés ellen */
+hydrateFromIDB();
+kerTartosTarolast().then(renderSaveStatus);
 
 /* A service worker cache-first, ezért fejlesztés közben makacsul a RÉGI fájlokat
    szolgálná ki minden újratöltésnél (ez a hiba a korábbi projektekben is visszatért).

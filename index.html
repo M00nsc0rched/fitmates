@@ -863,13 +863,21 @@ input::placeholder{color:var(--faint)}
       </div>
 
       <div class="px-5 mb-4">
+        <div class="sec-row">
+          <div class="sec" style="font-size:22px">Mentés állapota</div>
+          <button class="sec-link" onclick="mentesTeszt()">Teszt</button>
+        </div>
+        <div class="card" id="save-status"></div>
+      </div>
+
+      <div class="px-5 mb-4">
         <div class="sec-row"><div class="sec" style="font-size:22px">Adatok</div></div>
         <div class="grid grid-cols-2 gap-2 mb-2">
           <button class="btn-secondary" onclick="exportData()">Mentés fájlba</button>
           <button class="btn-secondary" onclick="importData()">Visszatöltés</button>
         </div>
         <button class="btn-secondary" onclick="resetData()" style="color:var(--danger)">Minden adat törlése</button>
-        <div class="tiny text-center" style="margin-top:16px">Fit Mates v<span id="app-version">7</span></div>
+        <div class="tiny text-center" style="margin-top:16px">Fit Mates v<span id="app-version">8</span></div>
       </div>
     </section>
 
